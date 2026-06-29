@@ -14,6 +14,7 @@ class CircleParams:
     ray_offset: float = DEFAULT_PARAMS["ray_offset"]
     ray_count: int = DEFAULT_PARAMS["ray_count"]
     ray_direction: str = DEFAULT_PARAMS["ray_direction"]
+    dedupe_closed_rays: bool = DEFAULT_PARAMS["dedupe_closed_rays"]
 
     @classmethod
     def from_dict(cls, data: dict) -> "CircleParams":
@@ -24,6 +25,7 @@ class CircleParams:
             ray_offset=float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"])),
             ray_count=int(data.get("ray_count", DEFAULT_PARAMS["ray_count"])),
             ray_direction=str(data.get("ray_direction", DEFAULT_PARAMS["ray_direction"])),
+            dedupe_closed_rays=bool(data.get("dedupe_closed_rays", DEFAULT_PARAMS["dedupe_closed_rays"])),
         )
 
     def to_dict(self) -> dict:
@@ -34,6 +36,7 @@ class CircleParams:
             "ray_offset": self.ray_offset,
             "ray_count": self.ray_count,
             "ray_direction": self.ray_direction,
+            "dedupe_closed_rays": self.dedupe_closed_rays,
         }
 
 

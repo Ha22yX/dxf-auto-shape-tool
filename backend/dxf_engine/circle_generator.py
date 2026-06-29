@@ -10,7 +10,7 @@ import ezdxf
 from ezdxf.math import Vec2
 
 from backend.state import CircleParams
-from backend.config import GENERATED_LAYER, RAY_LAYER
+from backend.config import GENERATED_LAYER
 from backend.dxf_engine import geometry_utils as geom
 
 
@@ -48,7 +48,8 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
     if not chain or params.ray_count <= 0 or params.circles_per_ray <= 0:
         return []
 
-    samples = geom.sample_chain(doc, chain, params.ray_count, closed=closed)
+    sample_closed = closed and params.dedupe_closed_rays
+    samples = geom.sample_chain(doc, chain, params.ray_count, closed=sample_closed)
     if not samples:
         return []
 
@@ -149,11 +150,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
         doc.layers.add(GENERATED_LAYER)
-    if RAY_LAYER not in doc.layers:
-        doc.layers.add(RAY_LAYER)
-
     circle_handles = []
-    ray_handles = []
 
     for p in placements:
         for center in p["centers"]:
@@ -164,11 +161,4 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
             )
             circle_handles.append(circle.dxf.handle)
 
-        ray = msp.add_line(
-            start=(p["ray_start"].x, p["ray_start"].y),
-            end=(p["ray_end"].x, p["ray_end"].y),
-            dxfattribs={"layer": RAY_LAYER},
-        )
-        ray_handles.append(ray.dxf.handle)
-
-    return circle_handles, ray_handles
+    return circle_handles, []

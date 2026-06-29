@@ -43,9 +43,9 @@ class ParameterPanel {
             },
             ray_count: {
                 min: 0,
-                max: 50,
+                max: 99999,
                 sliderMin: 0,
-                sliderMax: 50,
+                sliderMax: 500,
                 step: 1,
                 decimals: 0,
             },
@@ -62,6 +62,7 @@ class ParameterPanel {
         }
 
         this.rayDirection = document.getElementById("param-ray-direction");
+        this.dedupeClosedRays = document.getElementById("param-dedupe-closed-rays");
         this.togglePreview = document.getElementById("toggle-preview");
 
         this.onParamsChange = null;
@@ -162,6 +163,9 @@ class ParameterPanel {
                 parse("ray_count", 10),
             ),
             ray_direction: this.rayDirection ? this.rayDirection.value : "inward",
+            dedupe_closed_rays: this.dedupeClosedRays
+                ? this.dedupeClosedRays.checked
+                : true,
         };
         // Push normalized values back to the UI so they match what was sent.
         this.setParams(params);
@@ -179,6 +183,9 @@ class ParameterPanel {
         }
         if (params.ray_direction !== undefined && this.rayDirection) {
             this.rayDirection.value = params.ray_direction;
+        }
+        if (params.dedupe_closed_rays !== undefined && this.dedupeClosedRays) {
+            this.dedupeClosedRays.checked = Boolean(params.dedupe_closed_rays);
         }
     }
 
@@ -215,6 +222,10 @@ class ParameterPanel {
 
         if (this.rayDirection) {
             this.rayDirection.addEventListener("change", triggerChange);
+        }
+
+        if (this.dedupeClosedRays) {
+            this.dedupeClosedRays.addEventListener("change", triggerChange);
         }
 
         if (this.togglePreview) {

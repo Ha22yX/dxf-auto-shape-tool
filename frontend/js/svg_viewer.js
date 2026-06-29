@@ -65,10 +65,11 @@ class SvgViewer {
         hoverPath.setAttribute("id", "hover-highlight-path");
         hoverPath.setAttribute("fill", "none");
         hoverPath.setAttribute("stroke", "#FFD166");
-        hoverPath.setAttribute("stroke-width", "3000");
+        hoverPath.setAttribute("stroke-width", "2.5");
         hoverPath.setAttribute("stroke-opacity", "0.95");
         hoverPath.setAttribute("stroke-linecap", "round");
         hoverPath.setAttribute("stroke-linejoin", "round");
+        hoverPath.setAttribute("vector-effect", "non-scaling-stroke");
         hoverPath.setAttribute("pointer-events", "none");
         hoverPath.style.display = "none";
         const generatedLayer = document.createElementNS(SVG_NS, "g");
@@ -108,9 +109,11 @@ class SvgViewer {
             line.setAttribute("y1", r.y1.toFixed(1));
             line.setAttribute("x2", r.x2.toFixed(1));
             line.setAttribute("y2", r.y2.toFixed(1));
-            line.setAttribute("stroke", "#00BFFF");
-            line.setAttribute("stroke-width", "1500");
-            line.setAttribute("stroke-opacity", "0.6");
+            line.setAttribute("stroke", "#B8B8B8");
+            line.setAttribute("stroke-width", "1.2");
+            line.setAttribute("stroke-opacity", "0.45");
+            line.setAttribute("stroke-dasharray", "6 6");
+            line.setAttribute("vector-effect", "non-scaling-stroke");
             this.generatedLayer.appendChild(line);
         }
 
@@ -122,7 +125,8 @@ class SvgViewer {
             circle.setAttribute("r", c.r.toFixed(1));
             circle.setAttribute("fill", "none");
             circle.setAttribute("stroke", "#FF6B6B");
-            circle.setAttribute("stroke-width", "1500");
+            circle.setAttribute("stroke-width", "1.8");
+            circle.setAttribute("vector-effect", "non-scaling-stroke");
             this.generatedLayer.appendChild(circle);
         }
 
@@ -136,8 +140,9 @@ class SvgViewer {
             path.setAttribute("d", d);
             path.setAttribute("fill", "none");
             path.setAttribute("stroke", "#00BFFF");
-            path.setAttribute("stroke-width", "2500");
+            path.setAttribute("stroke-width", "2.5");
             path.setAttribute("stroke-opacity", "0.9");
+            path.setAttribute("vector-effect", "non-scaling-stroke");
             this.overlay.insertBefore(path, this.generatedLayer);
         }
     }

@@ -46,11 +46,13 @@ def test_circle_generator():
     )
     circle_handles, ray_handles = circle_generator.generate_circles(doc, handles, params)
     assert len(circle_handles) == 8  # 4 rays * 2 circles
+    assert ray_handles == []
 
     # Verify circles are on generated layer
     for h in circle_handles:
         entity = doc.entitydb[h]
         assert entity.dxf.layer == "GENERATED_CIRCLES"
+    assert not list(doc.modelspace().query('LINE[layer=="GENERATED_RAYS"]'))
 
 
 def test_entity_mapper():
@@ -169,6 +171,28 @@ def test_circle_generator_on_circle():
         circle = doc.entitydb[h]
         center = circle.dxf.center
         assert math.hypot(center.x, center.y) < 10
+
+
+def test_closed_chain_endpoint_rays_can_be_deduped():
+    doc = make_rect_doc()
+    handles = [e.dxf.handle for e in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=0.5,
+        circles_per_ray=1,
+        circle_spacing=2.0,
+        ray_offset=1.0,
+        ray_count=5,
+        ray_direction="inward",
+        dedupe_closed_rays=True,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    assert len(placements) == 5
+    assert (placements[0]["point"] - placements[-1]["point"]).magnitude > 1e-6
+
+    params.dedupe_closed_rays = False
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    assert len(placements) == 5
+    assert (placements[0]["point"] - placements[-1]["point"]).magnitude < 1e-6
 
 
 def test_path_analyzer_with_polyline_bulge():

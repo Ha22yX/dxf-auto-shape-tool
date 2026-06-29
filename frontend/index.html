@@ -84,10 +84,10 @@
                     <div class="form-group slider-group" data-param="ray_count">
                         <div class="slider-header">
                             <label>射线数量</label>
-                            <input type="number" id="param-ray-count" value="10" step="1" min="0" max="50">
+                            <input type="number" id="param-ray-count" value="10" step="1" min="0" max="99999">
                         </div>
-                        <input type="range" id="param-ray-count-slider" min="0" max="50" step="1" value="10">
-                        <div class="slider-hints"><span>0</span><span>25</span><span>50</span></div>
+                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="10">
+                        <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
                     </div>
 
                     <div class="form-group">
@@ -101,6 +101,11 @@
                     <div class="form-group toggle-group">
                         <label for="toggle-preview">显示生成图</label>
                         <input type="checkbox" id="toggle-preview" checked>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label for="param-dedupe-closed-rays">闭合端点射线去重</label>
+                        <input type="checkbox" id="param-dedupe-closed-rays" checked>
                     </div>
                 </div>
 

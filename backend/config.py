@@ -21,6 +21,7 @@ DEFAULT_PARAMS = {
     "ray_offset": 5.0,
     "ray_count": 10,
     "ray_direction": "inward",  # "inward" or "outward"
+    "dedupe_closed_rays": True,
 }
 
 # Selection / geometry tolerances
