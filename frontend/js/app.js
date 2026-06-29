@@ -79,10 +79,9 @@ const App = {
     },
 
     _bindParameters() {
-        parameterPanel.onParamsPreview = (params) => {
-            if (!this.sessionId) return;
-            svgViewer.previewParams(params, parameterPanel.getShowGenerated());
-        };
+        // Generated geometry is rendered only from backend preview_geometry.
+        // This keeps the web preview identical to the saved DXF geometry.
+        parameterPanel.onParamsPreview = null;
 
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;

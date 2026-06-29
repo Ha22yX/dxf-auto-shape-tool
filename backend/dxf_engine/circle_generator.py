@@ -354,6 +354,64 @@ def _distance_square(a: Vec2, b: Vec2):
     return delta.x * delta.x + delta.y * delta.y
 
 
+def _grid_key(point: Vec2, cell_size: float):
+    return (
+        math.floor(point.x / cell_size),
+        math.floor(point.y / cell_size),
+    )
+
+
+def _nearby_grid_keys(point: Vec2, cell_size: float):
+    ix, iy = _grid_key(point, cell_size)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            yield ix + dx, iy + dy
+
+
+def _circle_conflict(items, removed_ids, by_id, item_to_group, min_distance):
+    active = [item for item in items if item["id"] not in removed_ids]
+    if len(active) <= 1:
+        return None
+
+    cell_size = max(min_distance, POINT_TOLERANCE * 10.0, 1e-9)
+    min_distance_sq = min_distance * min_distance
+    cells = {}
+    best_conflict = None
+
+    for item in active:
+        center = item["center"]
+        for key in _nearby_grid_keys(center, cell_size):
+            for other_id in cells.get(key, []):
+                other = by_id[other_id]
+                distance_sq = _distance_square(center, other["center"])
+                if distance_sq >= min_distance_sq:
+                    continue
+                distance = math.sqrt(distance_sq)
+                penetration = min_distance - distance
+                if penetration <= 0:
+                    continue
+                g1 = item_to_group[item["id"]]
+                g2 = item_to_group[other_id]
+                conflict = (penetration, g1, g2)
+                if best_conflict is None or conflict[0] > best_conflict[0]:
+                    best_conflict = conflict
+
+        key = _grid_key(center, cell_size)
+        cells.setdefault(key, []).append(item["id"])
+
+    return best_conflict
+
+
+def _has_circle_overlap(item, kept_ids, by_id, min_distance):
+    if not kept_ids:
+        return False
+    min_distance_sq = min_distance * min_distance
+    return any(
+        _distance_square(item["center"], by_id[kept_id]["center"]) < min_distance_sq
+        for kept_id in kept_ids
+    )
+
+
 def _segment_distance(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2):
     u = a2 - a1
     v = b2 - b1
@@ -555,26 +613,13 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
     min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
 
     while True:
-        active_ids = [
-            item["id"]
-            for item in items
-            if item["id"] not in removed_ids
-        ]
-        best_conflict = None
-        for i, first_id in enumerate(active_ids):
-            first = by_id[first_id]
-            for second_id in active_ids[i + 1:]:
-                second = by_id[second_id]
-                distance = (first["center"] - second["center"]).magnitude
-                penetration = min_distance - distance
-                if penetration <= 0:
-                    continue
-                g1 = item_to_group[first_id]
-                g2 = item_to_group[second_id]
-                conflict = (penetration, g1, g2)
-                if best_conflict is None or conflict[0] > best_conflict[0]:
-                    best_conflict = conflict
-
+        best_conflict = _circle_conflict(
+            items,
+            removed_ids,
+            by_id,
+            item_to_group,
+            min_distance,
+        )
         if best_conflict is None:
             break
 
@@ -663,10 +708,7 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
             continue
         if item_id in capsule_removed_ids:
             continue
-        overlaps_kept = any(
-            (item["center"] - by_id[kept_id]["center"]).magnitude < min_distance
-            for kept_id in kept_ids
-        )
+        overlaps_kept = _has_circle_overlap(item, kept_ids, by_id, min_distance)
         if not overlaps_kept:
             kept_ids.add(item_id)
 
@@ -756,9 +798,32 @@ def _best_capsule_conflict(placements, params, axis, active_items):
     clearance = max(0.0, getattr(params, "capsule_clearance_distance", 0.0))
     min_distance = max(0.0, params.circle_radius * 2.0 + clearance - POINT_TOLERANCE)
     best_conflict = None
-    for i, first in enumerate(capsules):
+    cell_size = max(min_distance, POINT_TOLERANCE * 10.0, 1e-9)
+    cells = {}
+    checked = set()
+
+    for index, first in enumerate(capsules):
         first_capsule = first["capsule"]
-        for second in capsules[i + 1:]:
+        min_x = min(first_capsule["near"].x, first_capsule["far"].x) - min_distance
+        max_x = max(first_capsule["near"].x, first_capsule["far"].x) + min_distance
+        min_y = min(first_capsule["near"].y, first_capsule["far"].y) - min_distance
+        max_y = max(first_capsule["near"].y, first_capsule["far"].y) + min_distance
+        ix1 = math.floor(min_x / cell_size)
+        ix2 = math.floor(max_x / cell_size)
+        iy1 = math.floor(min_y / cell_size)
+        iy2 = math.floor(max_y / cell_size)
+
+        candidate_indexes = set()
+        for ix in range(ix1, ix2 + 1):
+            for iy in range(iy1, iy2 + 1):
+                candidate_indexes.update(cells.get((ix, iy), []))
+
+        for second_index in candidate_indexes:
+            pair = (second_index, index) if second_index < index else (index, second_index)
+            if pair in checked:
+                continue
+            checked.add(pair)
+            second = capsules[second_index]
             if first["placement_index"] == second["placement_index"]:
                 continue
             second_capsule = second["capsule"]
@@ -774,6 +839,10 @@ def _best_capsule_conflict(placements, params, axis, active_items):
             conflict = (penetration, first, second)
             if best_conflict is None or conflict[0] > best_conflict[0]:
                 best_conflict = conflict
+
+        for ix in range(ix1, ix2 + 1):
+            for iy in range(iy1, iy2 + 1):
+                cells.setdefault((ix, iy), []).append(index)
     return best_conflict
 
 
