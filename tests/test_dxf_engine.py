@@ -437,6 +437,35 @@ def test_overlap_pruning_marks_removed_circles_and_skips_export():
     assert len(circle_handles) == 2
 
 
+def test_overlap_pruning_does_not_delete_both_circles_in_same_mirror_group():
+    doc = ezdxf.new("R2010")
+    params = CircleParams(circle_radius=3.0)
+    placements = [
+        {
+            "point": Vec2(-1, 0),
+            "centers": [Vec2(-1, 0)],
+            "source_distance": 0.0,
+            "normal": Vec2(0, 1),
+        },
+        {
+            "point": Vec2(1, 0),
+            "centers": [Vec2(1, 0)],
+            "source_distance": 1.0,
+            "normal": Vec2(0, 1),
+        },
+    ]
+
+    kept, removed = circle_generator._overlap_pruned_circle_items(
+        doc,
+        [],
+        params,
+        placements,
+    )
+
+    assert len(kept) == 1
+    assert len(removed) == 1
+
+
 def test_circle_generator_on_circle():
     """Selecting a full circle should generate evenly spaced inward/outward circles."""
     doc = ezdxf.new("R2010")

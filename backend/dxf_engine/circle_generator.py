@@ -440,14 +440,14 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
         sum(_circle_priority(by_id[item_id], axis_center_x) for item_id in ids)
         for ids in groups
     ]
-    removed_groups = set()
+    removed_ids = set()
     min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
 
     while True:
         active_ids = [
             item["id"]
             for item in items
-            if item_to_group[item["id"]] not in removed_groups
+            if item["id"] not in removed_ids
         ]
         best_conflict = None
         for i, first_id in enumerate(active_ids):
@@ -469,25 +469,52 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
 
         _, g1, g2 = best_conflict
         if g1 == g2:
-            removed_groups.add(g1)
+            group_active_ids = [
+                item_id for item_id in groups[g1]
+                if item_id not in removed_ids
+            ]
+            if len(group_active_ids) <= 1:
+                break
+            loser = min(
+                group_active_ids,
+                key=lambda item_id: _circle_priority(by_id[item_id], axis_center_x),
+            )
+            removed_ids.add(loser)
             continue
         if group_scores[g1] < group_scores[g2]:
-            removed_groups.add(g1)
+            removed_ids.update(groups[g1])
         elif group_scores[g2] < group_scores[g1]:
-            removed_groups.add(g2)
+            removed_ids.update(groups[g2])
         else:
             # Same score: remove the smaller/inner group first, deterministic.
             g1_axis = sum(abs(by_id[item_id]["center"].x - axis_center_x) for item_id in groups[g1])
             g2_axis = sum(abs(by_id[item_id]["center"].x - axis_center_x) for item_id in groups[g2])
-            removed_groups.add(g1 if (len(groups[g1]), g1_axis, -g1) < (len(groups[g2]), g2_axis, -g2) else g2)
+            loser_group = g1 if (len(groups[g1]), g1_axis, -g1) < (len(groups[g2]), g2_axis, -g2) else g2
+            removed_ids.update(groups[loser_group])
+
+    kept_ids = {item["id"] for item in items if item["id"] not in removed_ids}
+    for item in sorted(
+        items,
+        key=lambda candidate: _circle_priority(candidate, axis_center_x),
+        reverse=True,
+    ):
+        item_id = item["id"]
+        if item_id in kept_ids:
+            continue
+        overlaps_kept = any(
+            (item["center"] - by_id[kept_id]["center"]).magnitude < min_distance
+            for kept_id in kept_ids
+        )
+        if not overlaps_kept:
+            kept_ids.add(item_id)
 
     kept = []
     removed = []
     for item in items:
-        if item_to_group[item["id"]] in removed_groups:
-            removed.append(item)
-        else:
+        if item["id"] in kept_ids:
             kept.append(item)
+        else:
+            removed.append(item)
     return kept, removed
 
 
