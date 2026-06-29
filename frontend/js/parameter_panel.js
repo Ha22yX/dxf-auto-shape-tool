@@ -103,9 +103,13 @@ class ParameterPanel {
         for (const key of this.keys) {
             const cfg = this.paramConfigs[key];
             const input = this.inputs[key];
+            const slider = this.sliders[key];
             input.min = cfg.min;
             input.max = cfg.max;
             input.step = cfg.step;
+            slider.min = cfg.sliderMin;
+            slider.max = cfg.sliderMax;
+            slider.step = cfg.step;
         }
     }
 

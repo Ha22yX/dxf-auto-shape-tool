@@ -27,7 +27,10 @@ if frontend_dir.exists():
 async def root():
     index_file = frontend_dir / "index.html"
     if index_file.exists():
-        return FileResponse(str(index_file))
+        return FileResponse(
+            str(index_file),
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
     return {"message": "DXF 自动图形工具后端已启动"}
 
 
