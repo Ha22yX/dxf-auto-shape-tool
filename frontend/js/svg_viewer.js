@@ -17,6 +17,7 @@ class SvgViewer {
         this.overlay = null;    // generated circles / rays / selection highlight
         this.generatedLayer = null; // toggleable subgroup for circles + rays
         this.hoverHitLayer = null;
+        this.hoverVisualLayer = null;
         this.hoverOwners = new Map();
 
         // View transform
@@ -80,8 +81,12 @@ class SvgViewer {
         hoverPath.style.display = "none";
         const generatedLayer = document.createElementNS(SVG_NS, "g");
         generatedLayer.setAttribute("id", "generated-layer");
+        const hoverVisualLayer = document.createElementNS(SVG_NS, "g");
+        hoverVisualLayer.setAttribute("id", "local-hover-visual-layer");
+        hoverVisualLayer.setAttribute("pointer-events", "none");
         overlay.appendChild(hoverPath);
         overlay.appendChild(generatedLayer);
+        overlay.appendChild(hoverVisualLayer);
 
         const hitLayer = this._buildLocalHoverHitLayer(viewport);
         viewport.appendChild(overlay);
@@ -91,6 +96,7 @@ class SvgViewer {
         this.hoverPath = hoverPath;
         this.generatedLayer = generatedLayer;
         this.hoverHitLayer = hitLayer;
+        this.hoverVisualLayer = hoverVisualLayer;
         this.lastHoverHandle = null;
         this.localHoverElement = null;
 
@@ -310,6 +316,7 @@ class SvgViewer {
             this.localHoverElement.classList.remove("local-hover-highlight");
             this.localHoverElement = null;
         }
+        this._renderLocalHover(null);
         if (!this.hoverPath) return;
         this.lastHoverHandle = null;
         this.hoverPath.removeAttribute("d");
@@ -325,10 +332,51 @@ class SvgViewer {
         this.localHoverElement = element || null;
         if (this.localHoverElement) {
             this.localHoverElement.classList.add("local-hover-highlight");
+            this._renderLocalHover(this.localHoverElement);
             this.container.classList.add("has-selectable-hover");
         } else {
+            this._renderLocalHover(null);
             this.container.classList.remove("has-selectable-hover");
         }
+    }
+
+    _renderLocalHover(owner) {
+        if (!this.hoverVisualLayer) return;
+        this.hoverVisualLayer.innerHTML = "";
+        if (!owner) return;
+
+        const clone = owner.cloneNode(true);
+        clone.removeAttribute("id");
+        clone.removeAttribute("class");
+        clone.setAttribute("data-hover-visual", "true");
+        this._prepareHoverVisual(clone);
+        this.hoverVisualLayer.appendChild(clone);
+    }
+
+    _prepareHoverVisual(root) {
+        const shapeSelector = "path,line,polyline,polygon,circle,ellipse,rect";
+        const shapes = root.matches && root.matches(shapeSelector)
+            ? [root]
+            : Array.from(root.querySelectorAll(shapeSelector));
+        for (const shape of shapes) {
+            shape.removeAttribute("id");
+            shape.removeAttribute("class");
+            shape.removeAttribute("style");
+            shape.setAttribute("fill", "none");
+            shape.setAttribute("stroke", "#FFD166");
+            shape.setAttribute("stroke-opacity", "1");
+            shape.setAttribute("stroke-width", "4");
+            shape.setAttribute("stroke-linecap", "round");
+            shape.setAttribute("stroke-linejoin", "round");
+            shape.setAttribute("vector-effect", "non-scaling-stroke");
+            shape.setAttribute("pointer-events", "none");
+        }
+        root.querySelectorAll("*").forEach((el) => {
+            el.removeAttribute("id");
+            el.removeAttribute("class");
+            el.removeAttribute("style");
+            el.setAttribute("pointer-events", "none");
+        });
     }
 
     _buildLocalHoverHitLayer(viewport) {

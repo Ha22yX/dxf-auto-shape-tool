@@ -42,8 +42,13 @@
 #selected-chain-path,
 #manual-apex-marker,
 #symmetry-axis-line,
-#symmetry-snap-marker {
+#symmetry-snap-marker,
+#local-hover-visual-layer {
     pointer-events: none;
+}
+
+#local-hover-visual-layer {
+    filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.95));
 }
 
 #local-hover-hit-layer [data-hover-proxy] {
