@@ -45,7 +45,6 @@ async def upload_dxf(file: UploadFile = File(...)):
 
     try:
         doc = loader.load_dxf(str(temp_path))
-        # ensure generated layer exists
         if GENERATED_LAYER not in doc.layers:
             doc.layers.add(GENERATED_LAYER)
     except Exception as e:
@@ -54,50 +53,75 @@ async def upload_dxf(file: UploadFile = File(...)):
     original_doc = loader.copy_dxf(doc)
     working_doc = loader.copy_dxf(doc)
 
-    original_bounds = svg_exporter.compute_bounds(original_doc)
-    svg_result = svg_exporter.doc_to_svg(working_doc, bounds=original_bounds)
+    # Accurate base SVG rendered once (handles blocks, OCS, text, ...).
+    base = svg_exporter.doc_to_base_svg(original_doc, dark=True)
 
     state = SessionState(
         session_id=session_id,
         original_doc=original_doc,
         working_doc=working_doc,
-        svg_string_generated=svg_result.svg_string,
-        svg_string_original=svg_result.svg_string,
-        entity_svg_transform=svg_result.transform,
-        original_bounds=original_bounds,
+        base_svg_string=base.svg_string,
+        svg_bounds=base.bounds,
+        svg_scale=base.scale,
+        original_bounds=base.bounds,
         chain_info={"total_length": 0.0, "segment_count": 0, "is_closed": False},
     )
     create_session(session_id, state)
 
     return {
         "session_id": session_id,
-        "svg_url": f"/api/session/{session_id}/svg?generated=true",
-        "bounds": svg_result.bounds,
+        "base_svg": base.svg_string,
+        "bounds": base.bounds,
+        "scale": base.scale,
         "entity_count": len(list(working_doc.modelspace())),
     }
 
 
 @app.get("/api/session/{session_id}/svg")
-async def get_svg(session_id: str, generated: bool = True):
+async def get_svg(session_id: str):
+    """Return the cached accurate base SVG (original drawing only)."""
     state = get_session(session_id)
     if not state:
         raise HTTPException(status_code=404, detail="会话不存在")
-
-    svg = state.svg_string_generated if generated else state.svg_string_original
-    return Response(content=svg, media_type="image/svg+xml")
+    return Response(content=state.base_svg_string, media_type="image/svg+xml")
 
 
 def _select_handle(state: SessionState, data: dict) -> Optional[str]:
-    """Determine selected handle from frontend data."""
-    if "handle" in data and data["handle"]:
-        handle = data["handle"]
-        entity = state.working_doc.entitydb.get(handle)
-        if entity and entity.dxf.layer != GENERATED_LAYER:
-            return handle
-    # Fallback to coordinate search
+    """Find the entity handle nearest to a click given in base-SVG output units."""
     svg_x = float(data.get("svg_x", 0))
     svg_y = float(data.get("svg_y", 0))
     return entity_mapper.find_nearest_entity(state, svg_x, svg_y)
+
+
+def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -> bool:
+    """Update selection state from a handle. Returns True if selection changed."""
+    if not handle:
+        return False
+
+    if not append:
+        state.selected_handles = []
+
+    if handle in state.selected_handles:
+        return False
+
+    state.selected_handles.append(handle)
+    chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
+    state.selected_chain = chain
+    state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
+    return True
+
+
+def regenerate(state: SessionState):
+    """Recompute the lightweight overlay geometry (no DXF mutation)."""
+    closed = state.chain_info.get("is_closed", False)
+    state.preview_geometry = circle_generator.compute_preview_geometry(
+        state.working_doc,
+        state.selected_chain,
+        state.params,
+        closed=closed,
+        bounds=state.svg_bounds,
+        scale=state.svg_scale,
+    )
 
 
 @app.post("/api/session/{session_id}/select")
@@ -111,24 +135,10 @@ async def select_entity(session_id: str, data: dict):
     if not handle:
         raise HTTPException(status_code=404, detail="未找到 nearby 实体")
 
-    if not append:
-        state.selected_handles = []
-
-    if handle not in state.selected_handles:
-        state.selected_handles.append(handle)
-
-    chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
-    state.selected_chain = chain
-    state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
-
-    # regenerate preview with current params
+    _apply_selection(state, handle, append)
     regenerate(state)
 
-    return {
-        "selected_handles": state.selected_handles,
-        "selected_chain": state.selected_chain,
-        "chain_info": state.chain_info,
-    }
+    return _preview_payload(state)["data"]
 
 
 @app.post("/api/session/{session_id}/params")
@@ -140,7 +150,11 @@ async def update_params(session_id: str, data: dict):
     state.params = CircleParams.from_dict(data)
     regenerate(state)
 
-    return {"params": state.params.to_dict(), "chain_info": state.chain_info}
+    return {
+        "params": state.params.to_dict(),
+        "chain_info": state.chain_info,
+        "preview_geometry": state.preview_geometry,
+    }
 
 
 @app.post("/api/session/{session_id}/toggle-preview")
@@ -155,12 +169,28 @@ async def toggle_preview(session_id: str, data: dict):
 
 @app.get("/api/session/{session_id}/download")
 async def download_dxf(session_id: str):
+    """The ONLY place where the DXF is mutated: clone original, add circles, save."""
     state = get_session(session_id)
     if not state:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    output_doc = loader.copy_dxf(state.original_doc)
+    if GENERATED_LAYER not in output_doc.layers:
+        output_doc.layers.add(GENERATED_LAYER)
+
+    if state.selected_chain:
+        try:
+            circle_generator.generate_circles(
+                output_doc,
+                state.selected_chain,
+                state.params,
+                closed=state.chain_info.get("is_closed", False),
+            )
+        except Exception as e:
+            print(f"生成圆失败: {e}")
+
     temp_path = TEMP_DIR / f"{session_id}_download.dxf"
-    loader.save_dxf(state.working_doc, str(temp_path))
+    loader.save_dxf(output_doc, str(temp_path))
 
     return FileResponse(
         str(temp_path),
@@ -180,65 +210,16 @@ async def clear_session(session_id: str):
     return {"success": True}
 
 
-def regenerate(state: SessionState):
-    # start from original to avoid accumulating circles
-    state.working_doc = loader.copy_dxf(state.original_doc)
-    if GENERATED_LAYER not in state.working_doc.layers:
-        state.working_doc.layers.add(GENERATED_LAYER)
-
-    state.generated_handles = []
-    state.generated_ray_handles = []
-
-    if state.selected_chain:
-        try:
-            circle_handles, ray_handles = circle_generator.generate_circles(
-                state.working_doc,
-                state.selected_chain,
-                state.params,
-                closed=state.chain_info.get("is_closed", False),
-            )
-            state.generated_handles = circle_handles
-            state.generated_ray_handles = ray_handles
-        except Exception as e:
-            # Log error; keep working_doc as original
-            print(f"生成圆失败: {e}")
-
-    # Use fixed view bounds based on original drawing, plus padding for generated circles.
-    # This ensures the original drawing does not shift when parameters change.
-    bounds = _padded_bounds(state.original_bounds, state.params)
-
-    svg_result = svg_exporter.doc_to_svg(
-        state.working_doc,
-        selected_chain=state.selected_chain,
-        bounds=bounds,
-    )
-    state.svg_string_generated = svg_result.svg_string
-    state.entity_svg_transform = svg_result.transform
-
-    # Original view: original doc with selection highlights but no generated circles
-    original_result = svg_exporter.doc_to_svg(
-        state.original_doc,
-        selected_chain=state.selected_chain,
-        bounds=bounds,
-    )
-    state.svg_string_original = original_result.svg_string
-
-
-def _padded_bounds(original_bounds: dict, params: CircleParams) -> dict:
-    """Keep viewBox fixed to original drawing bounds so the original graphic never shifts."""
-    return original_bounds
-
-
-def _svg_update_payload(state: SessionState):
-    svg = state.svg_string_generated if state.show_generated else state.svg_string_original
+def _preview_payload(state: SessionState):
     return {
-        "type": "svg_update",
+        "type": "preview_update",
         "data": {
-            "svg_content": svg,
+            "preview_geometry": state.preview_geometry,
             "selected_handles": state.selected_handles,
             "selected_chain": state.selected_chain,
             "chain_info": state.chain_info,
-            "generated_count": len(state.generated_handles),
+            "show_generated": state.show_generated,
+            "generated_count": state.preview_geometry.get("generated_count", 0),
         },
     }
 
@@ -259,10 +240,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             data = message.get("data", {})
 
             if msg_type == "svg_click":
-                svg_x = float(data.get("svg_x", 0))
-                svg_y = float(data.get("svg_y", 0))
                 append = bool(data.get("append", False))
-
                 handle = _select_handle(state, data)
                 if not handle:
                     await websocket.send_json({
@@ -271,26 +249,29 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     })
                     continue
 
-                if not append:
-                    state.selected_handles = []
-                if handle not in state.selected_handles:
-                    state.selected_handles.append(handle)
-
-                chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
-                state.selected_chain = chain
-                state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
+                _apply_selection(state, handle, append)
                 regenerate(state)
-
-                await websocket.send_json(_svg_update_payload(state))
+                await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "params_change":
                 state.params = CircleParams.from_dict(data.get("params", {}))
                 regenerate(state)
-                await websocket.send_json(_svg_update_payload(state))
+                await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "toggle_preview":
                 state.show_generated = bool(data.get("show_generated", True))
-                await websocket.send_json(_svg_update_payload(state))
+                await websocket.send_json(_preview_payload(state))
+
+            elif msg_type == "clear_selection":
+                state.selected_handles = []
+                state.selected_chain = []
+                state.chain_info = {
+                    "total_length": 0.0,
+                    "segment_count": 0,
+                    "is_closed": False,
+                }
+                regenerate(state)
+                await websocket.send_json({"type": "cleared", "data": {}})
 
             else:
                 await websocket.send_json({

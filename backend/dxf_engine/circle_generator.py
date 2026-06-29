@@ -1,4 +1,10 @@
-"""Generate circles and rays along normal directions from selected edge chain."""
+"""Generate circles and rays along normal directions from selected edge chain.
+
+Two entry points:
+- ``compute_placements`` / ``compute_preview_geometry``: pure geometry for the
+  real-time overlay (no DXF mutation).
+- ``generate_circles``: writes real entities into a DXF document (download only).
+"""
 from typing import List, Tuple
 import ezdxf
 from ezdxf.math import Vec2
@@ -8,12 +14,136 @@ from backend.config import GENERATED_LAYER, RAY_LAYER
 from backend.dxf_engine import geometry_utils as geom
 
 
-def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams, closed: bool = False) -> Tuple[List[str], List[str]]:
-    """
-    Generate circles and rays on rays perpendicular to the selected chain.
-    Returns (circle_handles, ray_handles).
+def _oriented_normals(doc, chain, samples, params, closed):
+    """Compute consistently-oriented normals along the chain (left-of-tangent)."""
+    if closed:
+        return geom.orient_normals_for_closed_chain(
+            samples,
+            inward=(params.ray_direction == "inward"),
+        )
+
+    oriented_normals = [s.normal for s in samples]
+    is_single_arc = (
+        len(chain) == 1
+        and doc.entitydb.get(chain[0])
+        and doc.entitydb[chain[0]].dxftype() == "ARC"
+    )
+    if params.ray_direction == "inward":
+        if is_single_arc:
+            # Standalone ARC raw normals point outward; flip to inward.
+            oriented_normals = [-n for n in oriented_normals]
+    else:  # outward
+        if not is_single_arc:
+            oriented_normals = [-n for n in oriented_normals]
+    return oriented_normals
+
+
+def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool = False):
+    """Pure-math placement of circles/rays along the chain (WCS coordinates).
+
+    Returns a list of dicts: ``{point, ray_start, ray_end, centers}`` where
+    ``centers`` is the list of circle centers in WCS. Empty list if nothing
+    to generate.
     """
     if not chain or params.ray_count <= 0 or params.circles_per_ray <= 0:
+        return []
+
+    samples = geom.sample_chain(doc, chain, params.ray_count, closed=closed)
+    if not samples:
+        return []
+
+    normals = _oriented_normals(doc, chain, samples, params, closed)
+
+    placements = []
+    for sample, normal in zip(samples, normals):
+        ray_start = sample.point + normal * params.ray_offset
+        centers = [
+            ray_start + normal * (k * params.circle_spacing)
+            for k in range(params.circles_per_ray)
+        ]
+        ray_end = centers[-1] if centers else ray_start
+        placements.append({
+            "point": sample.point,
+            "ray_start": ray_start,
+            "ray_end": ray_end,
+            "centers": centers,
+        })
+    return placements
+
+
+def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
+                             closed: bool, bounds: dict, scale: float) -> dict:
+    """Compute overlay geometry expressed in base-SVG output units.
+
+    Does NOT modify any DXF document. ``bounds``/``scale`` come from
+    ``svg_exporter.doc_to_base_svg`` and define the WCS -> SVG transform.
+    """
+    placements = compute_placements(doc, chain, params, closed=closed)
+
+    circles = []
+    rays = []
+    for p in placements:
+        for c in p["centers"]:
+            cx, cy = _to_svg(c.x, c.y, bounds, scale)
+            circles.append({
+                "cx": cx,
+                "cy": cy,
+                "r": params.circle_radius * scale,
+            })
+        x1, y1 = _to_svg(p["ray_start"].x, p["ray_start"].y, bounds, scale)
+        x2, y2 = _to_svg(p["ray_end"].x, p["ray_end"].y, bounds, scale)
+        rays.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
+
+    chain_path = _chain_path_d(doc, chain, closed, bounds, scale)
+
+    return {
+        "circles": circles,
+        "rays": rays,
+        "selected_chain_path": chain_path,
+        "generated_count": len(circles),
+    }
+
+
+def _to_svg(x: float, y: float, bounds: dict, scale: float):
+    sx = (x - bounds["min"][0]) * scale
+    sy = (bounds["max"][1] - y) * scale
+    return sx, sy
+
+
+def _chain_path_d(doc, chain: List[str], closed: bool, bounds: dict, scale: float) -> str:
+    """Build an SVG path 'd' for the selected chain in SVG output units."""
+    if not chain:
+        return ""
+
+    # Sample densely enough for a smooth highlight.
+    total = 0.0
+    for handle in chain:
+        entity = doc.entitydb.get(handle)
+        if entity:
+            total += geom.entity_length(entity)
+    num = max(32, min(2000, int(total / 2.0))) if total > 0 else 64
+
+    samples = geom.sample_chain(doc, chain, num, closed=closed)
+    if not samples:
+        return ""
+
+    parts = []
+    for i, s in enumerate(samples):
+        sx, sy = _to_svg(s.point.x, s.point.y, bounds, scale)
+        cmd = "M" if i == 0 else "L"
+        parts.append(f"{cmd} {sx:.1f} {sy:.1f}")
+    if closed:
+        parts.append("Z")
+    return " ".join(parts)
+
+
+def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams, closed: bool = False) -> Tuple[List[str], List[str]]:
+    """Write circle and ray entities into ``doc`` (used for the saved DXF).
+
+    Returns (circle_handles, ray_handles).
+    """
+    placements = compute_placements(doc, chain, params, closed=closed)
+    if not placements:
         return [], []
 
     msp = doc.modelspace()
@@ -22,64 +152,23 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     if RAY_LAYER not in doc.layers:
         doc.layers.add(RAY_LAYER)
 
-    # Sample points evenly along the chain
-    samples = geom.sample_chain(doc, chain, params.ray_count, closed=closed)
-
-    if not samples:
-        return [], []
-
-    # Orient normals consistently along the chain.
-    # For closed chains use signed-area based inward/outward.
-    # For open chains the raw left-of-tangent normals already define a
-    # consistent side along the traversal direction.
-    # A single standalone ARC is special-cased: "inward" points toward the
-    # arc center, while "outward" points away from it.
-    if closed:
-        oriented_normals = geom.orient_normals_for_closed_chain(
-            samples,
-            inward=(params.ray_direction == "inward"),
-        )
-    else:
-        oriented_normals = [s.normal for s in samples]
-        is_single_arc = (
-            len(chain) == 1
-            and doc.entitydb.get(chain[0])
-            and doc.entitydb[chain[0]].dxftype() == "ARC"
-        )
-        if params.ray_direction == "inward":
-            if is_single_arc:
-                # Standalone ARC raw normals point outward; flip to inward.
-                oriented_normals = [-n for n in oriented_normals]
-        else:  # outward
-            if not is_single_arc:
-                oriented_normals = [-n for n in oriented_normals]
-
     circle_handles = []
     ray_handles = []
 
-    for sample, normal in zip(samples, oriented_normals):
-        # Ray start point = sample point + normal * ray_offset
-        ray_start = sample.point + normal * params.ray_offset
-
-        # Generate circles along the ray
-        last_circle_center = None
-        for k in range(params.circles_per_ray):
-            center = ray_start + normal * (k * params.circle_spacing)
+    for p in placements:
+        for center in p["centers"]:
             circle = msp.add_circle(
                 center=(center.x, center.y),
                 radius=params.circle_radius,
                 dxfattribs={"layer": GENERATED_LAYER},
             )
             circle_handles.append(circle.dxf.handle)
-            last_circle_center = center
 
-        # Draw ray line from start to farthest circle center
-        if last_circle_center is not None:
-            ray = msp.add_line(
-                start=(ray_start.x, ray_start.y),
-                end=(last_circle_center.x, last_circle_center.y),
-                dxfattribs={"layer": RAY_LAYER},
-            )
-            ray_handles.append(ray.dxf.handle)
+        ray = msp.add_line(
+            start=(p["ray_start"].x, p["ray_start"].y),
+            end=(p["ray_end"].x, p["ray_end"].y),
+            dxfattribs={"layer": RAY_LAYER},
+        )
+        ray_handles.append(ray.dxf.handle)
 
     return circle_handles, ray_handles

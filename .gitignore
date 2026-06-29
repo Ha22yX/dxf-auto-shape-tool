@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Temp runtime artifacts (uploads, generated downloads, scratch scripts)
+temp/*
+!temp/.gitignore
+
+# Local env
+.venv/
+venv/
+env/

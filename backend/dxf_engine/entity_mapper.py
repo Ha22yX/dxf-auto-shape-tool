@@ -6,48 +6,27 @@ from ezdxf.math import Vec2, Vec3, Matrix44
 from backend.state import SessionState
 from backend.config import CLICK_TOLERANCE_PIXELS
 from backend.dxf_engine import geometry_utils as geom
-
-
-def _inverse_transform(transform: Matrix44, svg_x: float, svg_y: float) -> Vec2:
-    """Manually invert a 2D affine transform (ezdxf Matrix44.inverse may return None)."""
-    a, b, c, d, e, f, g, h, i = transform.get_2d_transformation()
-    # Matrix representation (column-major 3x3):
-    # [a, d, g]
-    # [b, e, h]
-    # [c, f, i]
-    # For affine 2D: x' = a*x + d*y + g, y' = b*x + e*y + h
-    det = a * e - b * d
-    if abs(det) < 1e-12:
-        return Vec2(svg_x, svg_y)
-
-    dx = svg_x - g
-    dy = svg_y - h
-    x = (e * dx - d * dy) / det
-    y = (-b * dx + a * dy) / det
-    return Vec2(float(x), float(y))
+from backend.dxf_engine import svg_exporter
 
 
 def find_nearest_entity(state: SessionState, svg_x: float, svg_y: float) -> Optional[str]:
     """
-    Find the nearest edge entity (LINE, ARC, LWPOLYLINE, POLYLINE) to the SVG click point.
+    Find the nearest edge entity to a click given in base-SVG output units.
     Returns entity handle or None.
     """
-    transform = state.entity_svg_transform
-    wcs_point = _inverse_transform(transform, svg_x, svg_y)
+    wcs_x, wcs_y = svg_exporter.svg_to_wcs(
+        svg_x, svg_y, state.svg_bounds, state.svg_scale
+    )
+    wcs_point = Vec2(wcs_x, wcs_y)
 
-    # Adaptive tolerance: ~5 CSS pixels converted to WCS units.
-    # We approximate using the document bounds.
-    bounds = state.working_doc.extents() if hasattr(state.working_doc, "extents") else None
-    if bounds is None:
-        # Fallback: compute bounds from modelspace entities
-        min_x, min_y, max_x, max_y = _doc_bounds(state.working_doc)
-        size = max(max_x - min_x, max_y - min_y, 1.0)
-    else:
-        size = max(bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1], 1.0)
-
-    # Assume preview fills container (~1000 px); 5 px ≈ 0.5% of drawing size
-    tolerance = size * 0.005
-    tolerance = max(tolerance, 1e-3)
+    # Adaptive tolerance in WCS units, derived from the drawing size.
+    bounds = state.svg_bounds
+    size = max(
+        bounds["max"][0] - bounds["min"][0],
+        bounds["max"][1] - bounds["min"][1],
+        1.0,
+    )
+    tolerance = max(size * 0.005, 1e-3)
 
     best_handle = None
     best_distance = float("inf")

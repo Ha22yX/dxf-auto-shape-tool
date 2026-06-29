@@ -1,14 +1,18 @@
 /**
  * Main application orchestration.
+ *
+ * Upload returns the accurate base SVG (rendered once). Parameter/selection
+ * changes flow over WebSocket and return lightweight overlay geometry — the
+ * DXF is never mutated until "Save DXF" is clicked.
  */
 const App = {
     sessionId: null,
-    generatedCount: 0,
+    bounds: null,
+    scale: 1,
 
     init() {
         this._bindUpload();
         this._bindViewer();
-        this._bindSelector();
         this._bindParameters();
         this._bindActions();
         this._bindStatus();
@@ -28,15 +32,14 @@ const App = {
                 this._setLoading(true);
                 const result = await API.upload(file);
                 this.sessionId = result.session_id;
-                this.generatedCount = 0;
+                this.bounds = result.bounds;
+                this.scale = result.scale || 1;
+
+                svgViewer.setBaseSvg(result.base_svg);
 
                 wsClient.connect(this.sessionId);
                 wsClient.onMessage = (msg) => this._handleWsMessage(msg);
-                wsClient.onError = (err) => this._showError("WebSocket 连接失败");
-
-                const svg = await API.getSvg(this.sessionId, true);
-                svgViewer.setSvg(svg);
-                svgViewer.resetView();
+                wsClient.onError = () => this._showError("WebSocket 连接失败");
 
                 this._updateStatus(result);
                 this._setLoading(false);
@@ -52,20 +55,16 @@ const App = {
     _bindViewer() {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
-            wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.handle);
+            wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey);
         };
 
         svgViewer.onMouseMove = (pt) => {
-            document.getElementById("status-coords").textContent =
-                `坐标: ${pt.x.toFixed(1)}, ${pt.y.toFixed(1)}`;
-        };
-    },
-
-    _bindSelector() {
-        // Backend already highlights selected entities in the SVG it sends,
-        // so no additional frontend highlighting is needed here.
-        selector.onSelectionChange = (handles, chain) => {
-            // State is updated; UI highlight comes from backend SVG.
+            if (this.bounds) {
+                const wcsX = pt.x / this.scale + this.bounds.min[0];
+                const wcsY = this.bounds.max[1] - pt.y / this.scale;
+                document.getElementById("status-coords").textContent =
+                    `坐标: ${wcsX.toFixed(1)}, ${wcsY.toFixed(1)}`;
+            }
         };
     },
 
@@ -81,8 +80,7 @@ const App = {
         };
     },
 
-    _bindActions() {
-        document.getElementById("save-btn").addEventListener("click", () => {
+    _bindActions() {        document.getElementById("save-btn").addEventListener("click", () => {
             if (!this.sessionId) return;
             const a = document.createElement("a");
             a.href = API.downloadUrl(this.sessionId);
@@ -95,10 +93,9 @@ const App = {
         document
             .getElementById("clear-selection-btn")
             .addEventListener("click", () => {
-                selector.clear();
-                if (this.sessionId) {
-                    wsClient.sendParams(parameterPanel.getParams());
-                }
+                if (!this.sessionId) return;
+                // Ask backend to clear selection by sending an explicit clear message.
+                wsClient.send("clear_selection", {});
             });
     },
 
@@ -108,25 +105,24 @@ const App = {
 
     _handleWsMessage(msg) {
         const data = msg.data || {};
-        if (msg.type === "svg_update") {
-            if (data.svg_content) {
-                svgViewer.setSvg(data.svg_content);
-            }
-            if (data.selected_chain) {
-                selector.setSelection(
-                    data.selected_handles || [],
-                    data.selected_chain,
-                );
-            }
+        if (msg.type === "preview_update") {
+            const geometry = data.preview_geometry || {};
+            svgViewer.setOverlay(geometry, data.show_generated);
+
             if (data.chain_info) {
                 this._updateStatus({ chain_info: data.chain_info });
             }
             if (data.generated_count !== undefined) {
-                this.generatedCount = data.generated_count;
                 document.getElementById(
                     "status-generated",
-                ).textContent = `生成圆: ${this.generatedCount}`;
+                ).textContent = `生成圆: ${data.generated_count}`;
             }
+        } else if (msg.type === "cleared") {
+            svgViewer.setOverlay({}, true);
+            this._updateStatus({
+                chain_info: { segment_count: 0, total_length: 0 },
+            });
+            document.getElementById("status-generated").textContent = "生成圆: 0";
         } else if (msg.type === "error") {
             this._showError(data.message || "发生错误");
         }

@@ -1,11 +1,138 @@
 """Custom SVG exporter for DXF preview with handle mapping and selection highlight."""
 import math
+import re
 from typing import Optional, List, Tuple
 import ezdxf
+from ezdxf import bbox as ezdxf_bbox
 from ezdxf.math import Vec2, Vec3, Matrix44, bulge_to_arc
+from ezdxf.addons.drawing import Frontend, RenderContext
+from ezdxf.addons.drawing import svg as drawing_svg
+from ezdxf.addons.drawing.config import Configuration, LineweightPolicy
+from ezdxf.addons.drawing.layout import Page, Settings, Units
 
 from backend.config import SVG_WIDTH, SVG_HEIGHT, SVG_MARGIN, SELECTED_HIGHLIGHT_COLOR, GENERATED_LAYER, RAY_LAYER
 from backend.dxf_engine import geometry_utils as geom
+
+
+# ---------------------------------------------------------------------------
+# Base SVG renderer (ezdxf.addons.drawing) for accurate 1:1 preview
+# ---------------------------------------------------------------------------
+
+# Output coordinate space resolution. A large value keeps integer rounding
+# error negligible (~1 unit out of this many) and makes stroke widths visible.
+OUTPUT_COORDINATE_SPACE = 1_000_000
+
+
+class BaseSvgResult:
+    """Result of the accurate base SVG render.
+
+    Attributes:
+        svg_string: full SVG document string (viewBox in output units).
+        bounds: WCS bounds dict {"min":[x,y], "max":[x,y]} (with padding).
+        scale: WCS mm -> output units scale (uniform).
+    """
+
+    def __init__(self, svg_string: str, bounds: dict, scale: float):
+        self.svg_string = svg_string
+        self.bounds = bounds
+        self.scale = scale
+
+
+def doc_to_base_svg(doc: ezdxf.document.Drawing, dark: bool = True) -> BaseSvgResult:
+    """Render a DXF document to an accurate SVG using ezdxf.addons.drawing.
+
+    Handles INSERTs/blocks, OCS, text, hatches, etc. so the preview matches
+    CAD editors 1:1. Content is placed 1:1 (fit disabled) inside a page sized
+    to the document's true bounding box (including blocks).
+    """
+    bounds = _document_bounds(doc)
+    min_x, min_y = bounds["min"]
+    max_x, max_y = bounds["max"]
+    width = max_x - min_x
+    height = max_y - min_y
+    if width < 1e-6 or height < 1e-6:
+        width = height = 100.0
+
+    ctx = RenderContext(doc)
+    config = Configuration(
+        lineweight_policy=LineweightPolicy.RELATIVE_FIXED,
+    )
+    backend = drawing_svg.SVGBackend()
+    frontend = Frontend(ctx, backend, config=config)
+    frontend.draw_layout(doc.modelspace())
+
+    page = Page(width=width, height=height, units=Units.mm)
+    settings = Settings(
+        fit_page=False,
+        scale=1.0,
+        output_coordinate_space=OUTPUT_COORDINATE_SPACE,
+        # Strokes as a fraction of the viewBox so they stay consistently
+        # visible regardless of drawing size. stroke ~= ocs * max * fixed.
+        max_stroke_width=0.001,
+        fixed_stroke_width=1.0,
+    )
+    svg_string = backend.get_string(page, settings=settings)
+
+    # Apply dark theme: override background + force light strokes.
+    svg_string = _apply_theme(svg_string, dark)
+
+    # Derive the uniform scale from the actual viewBox (robust to portrait/landscape).
+    match = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg_string)
+    vb_w = int(match.group(1)) if match else OUTPUT_COORDINATE_SPACE
+    scale = vb_w / width if width > 0 else 1.0
+
+    return BaseSvgResult(svg_string, bounds, scale)
+
+
+def _document_bounds(doc: ezdxf.document.Drawing) -> dict:
+    """Bounding box of the document including block references."""
+    try:
+        ext = ezdxf_bbox.extents(doc.modelspace(), fast=True)
+        if ext.has_data and math.isfinite(ext.extmin.x):
+            mn, mx = ext.extmin, ext.extmax
+            w = mx.x - mn.x
+            h = mx.y - mn.y
+            pad = max(w, h) * 0.02 + 1.0
+            return {"min": [mn.x - pad, mn.y - pad], "max": [mx.x + pad, mx.y + pad]}
+    except Exception:
+        pass
+    return compute_bounds(doc)
+
+
+def _apply_theme(svg_string: str, dark: bool) -> str:
+    """Patch background and stroke colors to match the app theme."""
+    if dark:
+        bg = "#1e1e1e"
+        fg = "#cccccc"
+    else:
+        bg = "#ffffff"
+        fg = "#000000"
+
+    # Replace background rect fill.
+    svg_string = re.sub(
+        r'(<rect[^>]*fill=")[^"]*(")',
+        lambda m: m.group(1) + bg + m.group(2),
+        svg_string,
+        count=1,
+    )
+    # Lighten all stroke colors for dark theme.
+    if dark:
+        svg_string = re.sub(r'(stroke:\s*)#[0-9a-fA-F]{6}', r'\g<1>' + fg, svg_string)
+    return svg_string
+
+
+def wcs_to_svg(x: float, y: float, bounds: dict, scale: float) -> Tuple[float, float]:
+    """Convert a WCS point to base-SVG output coordinates (viewBox units)."""
+    sx = (x - bounds["min"][0]) * scale
+    sy = (bounds["max"][1] - y) * scale
+    return sx, sy
+
+
+def svg_to_wcs(sx: float, sy: float, bounds: dict, scale: float) -> Tuple[float, float]:
+    """Convert a base-SVG output coordinate back to WCS."""
+    x = sx / scale + bounds["min"][0]
+    y = bounds["max"][1] - sy / scale
+    return x, y
 
 
 def compute_bounds(doc: ezdxf.document.Drawing) -> dict:

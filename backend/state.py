@@ -53,6 +53,13 @@ class SessionState:
     svg_string_generated: str = ""
     svg_string_original: str = ""
     chain_info: dict = field(default_factory=dict)
+    # New: accurate base SVG (from ezdxf.addons.drawing) and its WCS->SVG transform.
+    base_svg_string: str = ""
+    svg_bounds: dict = field(default_factory=dict)
+    svg_scale: float = 1.0
+    # New: lightweight overlay geometry for real-time preview (no DXF mutation).
+    preview_geometry: dict = field(default_factory=dict)
+
 
 
 # In-memory session store. For multi-user production, replace with Redis + disk.

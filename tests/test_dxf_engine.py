@@ -55,19 +55,18 @@ def test_circle_generator():
 
 def test_entity_mapper():
     doc = make_rect_doc()
-    result = svg_exporter.doc_to_svg(doc)
+    base = svg_exporter.doc_to_base_svg(doc)
     state = SessionState(
         session_id="test",
         original_doc=doc,
         working_doc=doc,
-        entity_svg_transform=result.transform,
+        svg_bounds=base.bounds,
+        svg_scale=base.scale,
     )
 
-    # Forward transform a known WCS point near bottom line middle (50, 0)
-    from ezdxf.math import Vec3
-    wcs = Vec3(50, 0, 0)
-    svg_pt = result.transform.transform(wcs)
-    handle = entity_mapper.find_nearest_entity(state, svg_pt.x, svg_pt.y)
+    # Click near the middle of the bottom line (WCS 50, 0) expressed in base-SVG units.
+    svg_x, svg_y = svg_exporter.wcs_to_svg(50, 0, base.bounds, base.scale)
+    handle = entity_mapper.find_nearest_entity(state, svg_x, svg_y)
     assert handle is not None
 
 
