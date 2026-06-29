@@ -4,10 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260629-backend-preview">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-backend-preview">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260629-global-loading">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-global-loading">
 </head>
 <body>
+    <div id="global-loading" class="global-loading" aria-hidden="true">
+        <div class="global-loading-indicator">
+            <span class="global-loading-spinner"></span>
+            <span id="global-loading-text">计算中...</span>
+        </div>
+    </div>
     <div class="app">
         <header class="app-header">
             <h1>DXF 自动图形工具</h1>
@@ -208,11 +214,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260629-backend-preview"></script>
-    <script src="/static/js/websocket.js?v=20260629-backend-preview"></script>
-    <script src="/static/js/svg_viewer.js?v=20260629-backend-preview"></script>
-    <script src="/static/js/selector.js?v=20260629-backend-preview"></script>
-    <script src="/static/js/parameter_panel.js?v=20260629-backend-preview"></script>
-    <script src="/static/js/app.js?v=20260629-backend-preview"></script>
+    <script src="/static/js/api.js?v=20260629-global-loading"></script>
+    <script src="/static/js/websocket.js?v=20260629-global-loading"></script>
+    <script src="/static/js/svg_viewer.js?v=20260629-global-loading"></script>
+    <script src="/static/js/selector.js?v=20260629-global-loading"></script>
+    <script src="/static/js/parameter_panel.js?v=20260629-global-loading"></script>
+    <script src="/static/js/app.js?v=20260629-global-loading"></script>
 </body>
 </html>
