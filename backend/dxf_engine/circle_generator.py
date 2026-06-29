@@ -73,7 +73,13 @@ def _distances_in_interval(start, end, count):
     return [start + step * i for i in range(count)]
 
 
-def _top_gap_distances(doc, chain, ray_count, gap_distance):
+def _is_effectively_closed(samples):
+    if len(samples) < 2:
+        return False
+    return (samples[0].point - samples[-1].point).magnitude <= POINT_TOLERANCE
+
+
+def _top_gap_distances(doc, chain, ray_count, gap_distance, closed=False):
     total = geom.chain_length(doc, chain)
     if total <= 1e-9 or ray_count <= 0:
         return []
@@ -87,6 +93,18 @@ def _top_gap_distances(doc, chain, ray_count, gap_distance):
 
     apex = max(dense, key=lambda sample: sample.point.y)
     gap = max(0.0, gap_distance)
+    cyclic = closed or _is_effectively_closed(dense)
+
+    if cyclic:
+        usable_length = total - gap * 2
+        if usable_length <= 1e-9:
+            return []
+        if ray_count == 1:
+            distances = [apex.distance + gap + usable_length / 2.0]
+        else:
+            step = usable_length / (ray_count - 1)
+            distances = [apex.distance + gap + step * i for i in range(ray_count)]
+        return [distance % total for distance in distances]
 
     intervals = []
     left_end = apex.distance - gap
@@ -105,10 +123,10 @@ def _top_gap_distances(doc, chain, ray_count, gap_distance):
     return distances
 
 
-def _samples_for_generation(doc, chain, params):
+def _samples_for_generation(doc, chain, params, closed):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
-        distances = _top_gap_distances(doc, chain, params.ray_count, top_gap)
+        distances = _top_gap_distances(doc, chain, params.ray_count, top_gap, closed=closed)
         return geom.sample_chain_at_distances(doc, chain, distances, smooth_tangents=True)
 
     skip_terminal_endpoint = params.dedupe_closed_rays
@@ -156,7 +174,7 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
         return []
 
     top_gap_active = getattr(params, "top_gap_distance", 0.0) > 0
-    samples = _samples_for_generation(doc, chain, params)
+    samples = _samples_for_generation(doc, chain, params, closed)
     if not samples:
         return []
 

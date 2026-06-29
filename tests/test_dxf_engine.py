@@ -212,6 +212,30 @@ def test_top_gap_skips_apex_but_keeps_ray_count():
     assert sum(1 for p in placements if p["point"].x > 0) == 2
 
 
+def test_top_gap_skips_apex_when_closed_chain_starts_at_top():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 10), (10, 0), (0, -10), (-10, 0)], close=True)
+    params = CircleParams(
+        circle_radius=0.5,
+        circles_per_ray=1,
+        circle_spacing=2.0,
+        ray_offset=1.0,
+        ray_count=6,
+        ray_direction="outward",
+        dedupe_closed_rays=True,
+        top_gap_distance=3.0,
+    )
+
+    placements = circle_generator.compute_placements(
+        doc, [poly.dxf.handle], params, closed=True
+    )
+
+    assert len(placements) == 6
+    apex = Vec2(0, 10)
+    assert all((p["point"] - apex).magnitude >= 3.0 - 1e-6 for p in placements)
+
+
 def test_circle_generator_on_circle():
     """Selecting a full circle should generate evenly spaced inward/outward circles."""
     doc = ezdxf.new("R2010")
