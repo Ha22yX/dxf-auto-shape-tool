@@ -34,6 +34,7 @@ class SvgViewer {
         // Hover state
         this.hoverPath = null;
         this.lastHoverHandle = null;
+        this.localHoverElement = null;
         this._hoverThrottle = null;
         this._lastHoverPoint = null;
         this._hoverRequestId = 0;
@@ -61,6 +62,7 @@ class SvgViewer {
 
         const overlay = document.createElementNS(SVG_NS, "g");
         overlay.setAttribute("id", "preview-overlay");
+        overlay.setAttribute("pointer-events", "none");
         const hoverPath = document.createElementNS(SVG_NS, "path");
         hoverPath.setAttribute("id", "hover-highlight-path");
         hoverPath.setAttribute("fill", "none");
@@ -83,9 +85,11 @@ class SvgViewer {
         this.hoverPath = hoverPath;
         this.generatedLayer = generatedLayer;
         this.lastHoverHandle = null;
+        this.localHoverElement = null;
 
         this.svg.addEventListener("click", (e) => this._handleClick(e));
         this.svg.addEventListener("mousemove", (e) => this._handleMouseMove(e));
+        this.svg.addEventListener("mouseleave", () => this.clearHover());
 
         this.scale = 1;
         this.translateX = 0;
@@ -203,11 +207,41 @@ class SvgViewer {
     }
 
     clearHover() {
+        if (this.localHoverElement) {
+            this.localHoverElement.classList.remove("local-hover-highlight");
+            this.localHoverElement = null;
+        }
         if (!this.hoverPath) return;
         this.lastHoverHandle = null;
         this.hoverPath.removeAttribute("d");
         this.hoverPath.style.display = "none";
         this.container.classList.remove("has-selectable-hover");
+    }
+
+    setLocalHoverElement(element) {
+        if (element === this.localHoverElement) return;
+        if (this.localHoverElement) {
+            this.localHoverElement.classList.remove("local-hover-highlight");
+        }
+        this.localHoverElement = element || null;
+        if (this.localHoverElement) {
+            this.localHoverElement.classList.add("local-hover-highlight");
+            this.container.classList.add("has-selectable-hover");
+        } else {
+            this.container.classList.remove("has-selectable-hover");
+        }
+    }
+
+    _localHoverTarget(e) {
+        const direct = e.target && e.target.closest ? e.target.closest("[data-handle]") : null;
+        if (direct && this.svg.contains(direct)) return direct;
+
+        for (const element of document.elementsFromPoint(e.clientX, e.clientY)) {
+            if (!this.svg.contains(element) || !element.closest) continue;
+            const candidate = element.closest("[data-handle]");
+            if (candidate && this.svg.contains(candidate)) return candidate;
+        }
+        return null;
     }
 
     /**
@@ -349,19 +383,8 @@ class SvgViewer {
         if (!this.svg || !this.onMouseMove) return;
         const pt = this.clientPointToSvg(e.clientX, e.clientY);
         this.onMouseMove({ x: pt.x, y: pt.y });
-        this._lastHoverPoint = pt;
-        if (!this.onHover || this.isPanning) return;
-        if (this._hoverThrottle) window.cancelAnimationFrame(this._hoverThrottle);
-        this._hoverThrottle = window.requestAnimationFrame(() => {
-            this._hoverThrottle = null;
-            if (!this._lastHoverPoint || !this.onHover) return;
-            this.onHover({
-                requestId: ++this._hoverRequestId,
-                svgX: this._lastHoverPoint.x,
-                svgY: this._lastHoverPoint.y,
-                tol: 7 * this.wcsPerPixel(),
-            });
-        });
+        if (this.isPanning) return;
+        this.setLocalHoverElement(this._localHoverTarget(e));
     }
 }
 

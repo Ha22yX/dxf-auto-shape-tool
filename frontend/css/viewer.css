@@ -37,6 +37,21 @@
     filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.8));
 }
 
+#preview-overlay,
+#generated-layer,
+#selected-chain-path,
+#manual-apex-marker {
+    pointer-events: none;
+}
+
+#dxf-content [data-handle].local-hover-highlight,
+#dxf-content .local-hover-highlight [stroke],
+.local-hover-highlight {
+    stroke: #FFD166 !important;
+    stroke-opacity: 1 !important;
+    filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.9));
+}
+
 #manual-apex-marker {
     filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.9));
 }
