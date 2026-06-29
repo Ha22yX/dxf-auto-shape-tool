@@ -66,7 +66,6 @@ class SvgViewer {
             viewport.appendChild(this.svg.firstChild);
         }
         this.svg.appendChild(viewport);
-        this._stabilizeBaseLayer(viewport);
 
         const overlay = document.createElementNS(SVG_NS, "g");
         overlay.setAttribute("id", "preview-overlay");
@@ -124,13 +123,6 @@ class SvgViewer {
 
         this._renderGeneratedGeometry(geometry, showGenerated);
         this._renderStaticOverlay(geometry);
-    }
-
-    _stabilizeBaseLayer(viewport) {
-        const baseShapes = viewport.querySelectorAll("path,line,polyline,polygon,circle,ellipse");
-        for (const shape of baseShapes) {
-            shape.setAttribute("vector-effect", "non-scaling-stroke");
-        }
     }
 
     previewParams(params, showGenerated = this.lastShowGenerated) {
@@ -803,7 +795,7 @@ class SvgViewer {
                 y: (raw.y - this.translateY) / this.scale,
             };
             const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
-            const newScale = Math.max(0.05, Math.min(40, this.scale * zoomFactor));
+            const newScale = Math.max(0.05, Math.min(25, this.scale * zoomFactor));
 
             this.translateX = raw.x - anchoredPoint.x * newScale;
             this.translateY = raw.y - anchoredPoint.y * newScale;
