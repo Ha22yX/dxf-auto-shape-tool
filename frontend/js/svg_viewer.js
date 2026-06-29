@@ -139,6 +139,8 @@ class SvgViewer {
         if (oldPath) oldPath.remove();
         const oldApex = this.overlay.querySelector("#manual-apex-marker");
         if (oldApex) oldApex.remove();
+        const oldAxis = this.overlay.querySelector("#symmetry-axis-line");
+        if (oldAxis) oldAxis.remove();
         const d = geometry.selected_chain_path;
         if (d) {
             const path = document.createElementNS(SVG_NS, "path");
@@ -150,6 +152,23 @@ class SvgViewer {
             path.setAttribute("stroke-opacity", "0.9");
             path.setAttribute("vector-effect", "non-scaling-stroke");
             this.overlay.insertBefore(path, this.generatedLayer);
+        }
+
+        const axis = geometry.symmetry_axis;
+        if (axis) {
+            const line = document.createElementNS(SVG_NS, "line");
+            line.setAttribute("id", "symmetry-axis-line");
+            line.setAttribute("x1", axis.x1.toFixed(1));
+            line.setAttribute("y1", axis.y1.toFixed(1));
+            line.setAttribute("x2", axis.x2.toFixed(1));
+            line.setAttribute("y2", axis.y2.toFixed(1));
+            line.setAttribute("stroke", "#FF5C5C");
+            line.setAttribute("stroke-width", "1.8");
+            line.setAttribute("stroke-opacity", "0.55");
+            line.setAttribute("stroke-dasharray", "8 7");
+            line.setAttribute("vector-effect", "non-scaling-stroke");
+            line.setAttribute("pointer-events", "none");
+            this.overlay.insertBefore(line, this.generatedLayer);
         }
 
         const marker = geometry.apex_marker;

@@ -163,10 +163,16 @@ def _set_manual_apex(state: SessionState, data: dict) -> bool:
     wcs_x, wcs_y = svg_exporter.svg_to_wcs(
         svg_x, svg_y, state.svg_bounds, state.svg_scale
     )
-    sample = geometry_utils.nearest_sample_on_chain(
+    tol = data.get("tol", None)
+    try:
+        tol = float(tol) if tol is not None else None
+    except (TypeError, ValueError):
+        tol = None
+    sample = geometry_utils.snapped_apex_sample_on_chain(
         state.working_doc,
         state.selected_chain,
         Vec2(wcs_x, wcs_y),
+        snap_tolerance=tol,
     )
     if sample is None:
         return False

@@ -286,6 +286,43 @@ def test_manual_apex_distance_overrides_auto_top():
     assert all((p["point"] - start).magnitude >= 2.0 - 1e-6 for p in placements)
 
 
+def test_symmetry_axis_snaps_manual_apex_to_center_crossing():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0)], close=False)
+
+    sample = geometry_utils.snapped_apex_sample_on_chain(
+        doc,
+        [poly.dxf.handle],
+        Vec2(10.2, 9.7),
+        snap_tolerance=1.0,
+    )
+
+    assert sample is not None
+    assert (sample.point - Vec2(10, 10)).magnitude < 0.1
+
+
+def test_preview_returns_symmetry_axis_overlay():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0)], close=False)
+    params = CircleParams(ray_count=1, circles_per_ray=1)
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        [poly.dxf.handle],
+        params,
+        closed=False,
+        bounds={"min": [0, 0], "max": [20, 10]},
+        scale=1.0,
+    )
+
+    axis = preview["symmetry_axis"]
+    assert axis is not None
+    assert abs(axis["x1"] - 10) < 0.2
+    assert abs(axis["x2"] - 10) < 0.2
+
+
 def test_preview_returns_manual_apex_marker():
     doc = make_rect_doc()
     handle = next(e.dxf.handle for e in doc.modelspace())

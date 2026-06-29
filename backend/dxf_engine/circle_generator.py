@@ -145,6 +145,15 @@ def _manual_apex_marker(doc, chain, manual_apex_distance):
     return _apex_sample(doc, chain, total, manual_apex_distance=manual_apex_distance)
 
 
+def _symmetry_axis_overlay(doc, chain, bounds, scale):
+    axis = geom.estimate_chain_symmetry_axis(doc, chain)
+    if not axis:
+        return None
+    x1, y1 = _to_svg(axis["start"].x, axis["start"].y, bounds, scale)
+    x2, y2 = _to_svg(axis["end"].x, axis["end"].y, bounds, scale)
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+
 def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=None):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
@@ -275,6 +284,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "rays": rays,
         "selected_chain_path": chain_path,
         "apex_marker": apex_marker,
+        "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
     }
 

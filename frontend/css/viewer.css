@@ -40,8 +40,17 @@
 #preview-overlay,
 #generated-layer,
 #selected-chain-path,
-#manual-apex-marker {
+#manual-apex-marker,
+#symmetry-axis-line {
     pointer-events: none;
+}
+
+#symmetry-axis-line {
+    display: none;
+}
+
+.svg-container.is-picking-apex #symmetry-axis-line {
+    display: block;
 }
 
 #dxf-content [data-handle].local-hover-highlight,

@@ -65,7 +65,7 @@ const App = {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
             if (this.apexPickMode) {
-                wsClient.sendApex(evt.svgX, evt.svgY);
+                wsClient.sendApex(evt.svgX, evt.svgY, 10 * svgViewer.wcsPerPixel());
                 this._setApexPickMode(false);
                 return;
             }

@@ -530,6 +530,132 @@ def nearest_sample_on_chain(doc, chain: List[str], point: Vec2,
     return min(samples, key=lambda sample: (sample.point - point).magnitude)
 
 
+def _dot(a: Vec2, b: Vec2) -> float:
+    return a.x * b.x + a.y * b.y
+
+
+def _distance_to_axis(point: Vec2, center: Vec2, normal: Vec2) -> float:
+    return abs(_dot(point - center, normal))
+
+
+def _distance_square(a: Vec2, b: Vec2) -> float:
+    delta = a - b
+    return delta.x * delta.x + delta.y * delta.y
+
+
+def estimate_chain_symmetry_axis(doc, chain: List[str], sample_count: Optional[int] = None):
+    """Estimate the left/right symmetry axis of a selected chain.
+
+    The axis passes through the sampled centroid. Its direction is chosen by
+    minimizing reflection error: points reflected across the candidate axis
+    should land close to the original point cloud.
+    """
+    total = chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+
+    if sample_count is None:
+        sample_count = max(81, min(121, int(total / 12.0)))
+        if sample_count % 2 == 0:
+            sample_count += 1
+
+    samples = sample_chain(doc, chain, sample_count, closed=False)
+    if len(samples) < 3:
+        return None
+
+    points = [s.point for s in samples]
+    center = Vec2(
+        sum(p.x for p in points) / len(points),
+        sum(p.y for p in points) / len(points),
+    )
+
+    best = None
+    # One-degree steps are stable enough for display and snapping while keeping
+    # slider-driven preview updates responsive.
+    for step in range(180):
+        angle = math.pi * step / 180.0
+        direction = Vec2(math.cos(angle), math.sin(angle))
+        normal = Vec2(-direction.y, direction.x)
+        error = 0.0
+
+        for point in points:
+            delta = point - center
+            reflected = point - normal * (2.0 * _dot(delta, normal))
+            nearest_sq = min(_distance_square(reflected, other) for other in points)
+            error += nearest_sq
+
+        if best is None or error < best["error"]:
+            best = {
+                "center": center,
+                "direction": direction,
+                "normal": normal,
+                "error": error / len(points),
+                "points": points,
+            }
+
+    if best is None:
+        return None
+
+    projections = [_dot(point - best["center"], best["direction"]) for point in points]
+    across = [_dot(point - best["center"], best["normal"]) for point in points]
+    length = max(projections) - min(projections)
+    width = max(across) - min(across)
+    diagonal = math.hypot(length, width)
+    margin = max(diagonal * 0.35, total * 0.08, 1.0)
+
+    best["start"] = best["center"] + best["direction"] * (min(projections) - margin)
+    best["end"] = best["center"] + best["direction"] * (max(projections) + margin)
+    best["distance_error"] = math.sqrt(max(best["error"], 0.0))
+    return best
+
+
+def nearest_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):
+    total = chain_length(doc, chain)
+    if total <= 1e-9 or not axis:
+        return None
+    if sample_count is None:
+        sample_count = max(257, min(5001, int(total / 2.0)))
+        if sample_count % 2 == 0:
+            sample_count += 1
+    samples = sample_chain(doc, chain, sample_count, closed=False)
+    if not samples:
+        return None
+    return min(
+        samples,
+        key=lambda sample: _distance_to_axis(sample.point, axis["center"], axis["normal"]),
+    )
+
+
+def snapped_apex_sample_on_chain(doc, chain: List[str], point: Vec2,
+                                 snap_tolerance: Optional[float] = None):
+    """Project a click to the chain, snapping to the symmetry-axis crossing.
+
+    The snap only activates when the click is near both the estimated symmetry
+    axis and the axis/chain crossing, so ordinary manual apex picking still
+    works away from the center line.
+    """
+    total = chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+
+    nearest = nearest_sample_on_chain(doc, chain, point)
+    axis = estimate_chain_symmetry_axis(doc, chain)
+    axis_sample = nearest_axis_sample_on_chain(doc, chain, axis) if axis else None
+    if nearest is None or axis is None or axis_sample is None:
+        return nearest
+
+    if snap_tolerance is None or snap_tolerance <= 0:
+        snap_tolerance = max(total * 0.015, 1.0)
+
+    line_distance = _distance_to_axis(point, axis["center"], axis["normal"])
+    crossing_distance = (axis_sample.point - point).magnitude
+    crossing_window = max(snap_tolerance * 2.5, total * 0.015)
+
+    if line_distance <= snap_tolerance and crossing_distance <= crossing_window:
+        return axis_sample
+    return nearest
+
+
 def sample_chain(doc, chain: List[str], num_points: int, closed: bool = False,
                  smooth_tangents: bool = True) -> List[SamplePoint]:
     """
