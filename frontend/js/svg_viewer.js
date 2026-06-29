@@ -179,14 +179,19 @@ class SvgViewer {
      */
     clientPointToSvg(clientX, clientY) {
         if (!this.svg) return { x: clientX, y: clientY };
-        const pt = this.svg.createSVGPoint();
-        pt.x = clientX;
-        pt.y = clientY;
-        const v = pt.matrixTransform(this.svg.getScreenCTM().inverse());
+        const v = this.clientPointToRootSvg(clientX, clientY);
         return {
             x: (v.x - this.translateX) / this.scale,
             y: (v.y - this.translateY) / this.scale,
         };
+    }
+
+    clientPointToRootSvg(clientX, clientY) {
+        if (!this.svg) return { x: clientX, y: clientY };
+        const pt = this.svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        return pt.matrixTransform(this.svg.getScreenCTM().inverse());
     }
 
     /**
@@ -267,12 +272,16 @@ class SvgViewer {
             e.preventDefault();
             if (!this.svg) return;
 
-            const pt = this.clientPointToSvg(e.clientX, e.clientY);
+            const raw = this.clientPointToRootSvg(e.clientX, e.clientY);
+            const anchoredPoint = {
+                x: (raw.x - this.translateX) / this.scale,
+                y: (raw.y - this.translateY) / this.scale,
+            };
             const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
             const newScale = Math.max(0.05, Math.min(100, this.scale * zoomFactor));
 
-            this.translateX = pt.x - (pt.x - this.translateX) * (newScale / this.scale);
-            this.translateY = pt.y - (pt.y - this.translateY) * (newScale / this.scale);
+            this.translateX = raw.x - anchoredPoint.x * newScale;
+            this.translateY = raw.y - anchoredPoint.y * newScale;
             this.scale = newScale;
             this._applyTransform();
         });
