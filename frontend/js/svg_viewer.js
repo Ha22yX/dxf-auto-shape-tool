@@ -323,7 +323,11 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
-        const capsuleStart = Number(params.capsule_start_distance || 0) * svgScale;
+        const maxCapsuleStart = Math.max(0.1, Number(params.ray_offset || 0));
+        const capsuleStart = Math.max(
+            0.1,
+            Math.min(Number(params.capsule_start_distance || 0.1), maxCapsuleStart),
+        ) * svgScale;
         const source = basis.slice(0, rayCount);
         const allCircles = [];
         const rays = [];
@@ -367,19 +371,18 @@ class SvgViewer {
         if (radius <= 0 || Math.abs(farDistance - nearDistance) <= 1e-6) {
             return null;
         }
-        if (farDistance < nearDistance) {
-            const swap = nearDistance;
-            nearDistance = farDistance;
-            farDistance = swap;
-            nx = -nx;
-            ny = -ny;
-        }
-        const px = -ny;
-        const py = nx;
         const nearX = base.x + nx * nearDistance;
         const nearY = base.y + ny * nearDistance;
         const farX = base.x + nx * farDistance;
         const farY = base.y + ny * farDistance;
+        let dx = farX - nearX;
+        let dy = farY - nearY;
+        const length = Math.hypot(dx, dy);
+        if (length <= 1e-6) return null;
+        dx /= length;
+        dy /= length;
+        const px = -dy;
+        const py = dx;
         const nearLeft = { x: nearX + px * radius, y: nearY + py * radius };
         const farLeft = { x: farX + px * radius, y: farY + py * radius };
         const farRight = { x: farX - px * radius, y: farY - py * radius };

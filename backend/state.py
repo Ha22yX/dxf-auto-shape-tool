@@ -21,12 +21,18 @@ class CircleParams:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CircleParams":
+        ray_offset = float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"]))
+        capsule_start_distance = float(data.get(
+            "capsule_start_distance",
+            DEFAULT_PARAMS["capsule_start_distance"],
+        ))
+        capsule_start_distance = max(0.1, min(capsule_start_distance, max(0.1, ray_offset)))
         return cls(
             circle_radius=float(data.get("circle_radius", DEFAULT_PARAMS["circle_radius"])),
             circles_per_ray=int(data.get("circles_per_ray", DEFAULT_PARAMS["circles_per_ray"])),
             circle_spacing=float(data.get("circle_spacing", DEFAULT_PARAMS["circle_spacing"])),
-            ray_offset=float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"])),
-            capsule_start_distance=float(data.get("capsule_start_distance", DEFAULT_PARAMS["capsule_start_distance"])),
+            ray_offset=ray_offset,
+            capsule_start_distance=capsule_start_distance,
             top_gap_distance=float(data.get("top_gap_distance", DEFAULT_PARAMS["top_gap_distance"])),
             ray_count=int(data.get("ray_count", DEFAULT_PARAMS["ray_count"])),
             ray_direction=str(data.get("ray_direction", DEFAULT_PARAMS["ray_direction"])),

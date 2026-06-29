@@ -614,6 +614,22 @@ def test_generate_circles_exports_capsule_outline_entities():
     assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 2
 
 
+def test_capsule_start_distance_is_clamped_to_first_circle():
+    params = CircleParams.from_dict({
+        "ray_offset": 12.0,
+        "capsule_start_distance": 50.0,
+    })
+
+    assert params.capsule_start_distance == 12.0
+
+    params = CircleParams.from_dict({
+        "ray_offset": 12.0,
+        "capsule_start_distance": 0.0,
+    })
+
+    assert params.capsule_start_distance == 0.1
+
+
 def test_open_chain_normals_do_not_flip_sides():
     doc = ezdxf.new("R2010")
     samples = [

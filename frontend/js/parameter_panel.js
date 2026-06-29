@@ -42,10 +42,10 @@ class ParameterPanel {
                 decimals: 1,
             },
             capsule_start_distance: {
-                min: -99999,
-                max: 99999,
-                sliderMin: -500,
-                sliderMax: 500,
+                min: 0.1,
+                max: 75,
+                sliderMin: 0.1,
+                sliderMax: 75,
                 step: 0.5,
                 decimals: 1,
             },
@@ -80,6 +80,8 @@ class ParameterPanel {
         this.rayDirection = document.getElementById("param-ray-direction");
         this.dedupeClosedRays = document.getElementById("param-dedupe-closed-rays");
         this.togglePreview = document.getElementById("toggle-preview");
+        this.capsuleStartMidHint = document.getElementById("capsule-start-mid-hint");
+        this.capsuleStartMaxHint = document.getElementById("capsule-start-max-hint");
 
         this.onParamsChange = null;
         this.onParamsPreview = null;
@@ -95,6 +97,7 @@ class ParameterPanel {
      * @param {"input" | "slider"} rangeType
      */
     _normalizeValue(key, value, rangeType = "input") {
+        this._updateDependentLimits();
         const cfg = this.paramConfigs[key];
         const min = rangeType === "slider" ? cfg.sliderMin : cfg.min;
         const max = rangeType === "slider" ? cfg.sliderMax : cfg.max;
@@ -130,6 +133,7 @@ class ParameterPanel {
      * authoritative input range (wider than the slider range).
      */
     _updateInputLimits() {
+        this._updateDependentLimits();
         for (const key of this.keys) {
             const cfg = this.paramConfigs[key];
             const input = this.inputs[key];
@@ -141,6 +145,37 @@ class ParameterPanel {
             slider.max = cfg.sliderMax;
             slider.step = cfg.step;
         }
+    }
+
+    _updateDependentLimits() {
+        const cfg = this.paramConfigs.capsule_start_distance;
+        if (!cfg || !this.inputs.ray_offset) return;
+        const rawOffset = parseFloat(this.inputs.ray_offset.value);
+        const maxDistance = Math.max(cfg.min, isNaN(rawOffset) ? 75 : rawOffset);
+        cfg.max = maxDistance;
+        cfg.sliderMax = maxDistance;
+
+        const input = this.inputs.capsule_start_distance;
+        const slider = this.sliders.capsule_start_distance;
+        if (input) input.max = maxDistance;
+        if (slider) slider.max = maxDistance;
+        if (this.capsuleStartMaxHint) {
+            this.capsuleStartMaxHint.textContent = Number(maxDistance.toFixed(1));
+        }
+        if (this.capsuleStartMidHint) {
+            this.capsuleStartMidHint.textContent = Number(((cfg.min + maxDistance) / 2).toFixed(1));
+        }
+    }
+
+    _clampCapsuleStartDisplay() {
+        const input = this.inputs.capsule_start_distance;
+        const slider = this.sliders.capsule_start_distance;
+        if (!input || !slider) return;
+        const cfg = this.paramConfigs.capsule_start_distance;
+        const raw = parseFloat(input.value);
+        const value = isNaN(raw) ? cfg.min : this._normalizeInputValue("capsule_start_distance", raw);
+        input.value = Number(value.toFixed(cfg.decimals));
+        slider.value = Math.max(cfg.sliderMin, Math.min(cfg.sliderMax, value));
     }
 
     /**
@@ -161,6 +196,10 @@ class ParameterPanel {
             value = this._normalizeInputValue(key, raw);
             const sliderValue = Math.max(cfg.sliderMin, Math.min(cfg.sliderMax, value));
             this.sliders[key].value = sliderValue;
+            if (key === "ray_offset") {
+                this._updateDependentLimits();
+                this._clampCapsuleStartDisplay();
+            }
             return;
         } else {
             const raw = parseFloat(this.sliders[key].value);
@@ -174,6 +213,10 @@ class ParameterPanel {
         // Slider visual position is clamped to its own range.
         const sliderValue = Math.max(cfg.sliderMin, Math.min(cfg.sliderMax, value));
         this.sliders[key].value = sliderValue;
+        if (key === "ray_offset") {
+            this._updateDependentLimits();
+            this._clampCapsuleStartDisplay();
+        }
     }
 
     _commitInput(key) {
@@ -209,7 +252,7 @@ class ParameterPanel {
             ),
             capsule_start_distance: this._normalizeInputValue(
                 "capsule_start_distance",
-                parse("capsule_start_distance", 0),
+                parse("capsule_start_distance", 0.1),
             ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",

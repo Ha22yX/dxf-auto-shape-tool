@@ -295,7 +295,8 @@ def _capsule_for_placement(placement, params):
     if normal.magnitude <= 1e-9:
         return None
     direction = normal.normalize()
-    start_distance = getattr(params, "capsule_start_distance", 0.0)
+    max_start = max(0.1, params.ray_offset)
+    start_distance = max(0.1, min(getattr(params, "capsule_start_distance", 0.1), max_start))
     near_center = placement["point"] + direction * start_distance
     if placement["centers"]:
         far_center = placement["centers"][-1]
