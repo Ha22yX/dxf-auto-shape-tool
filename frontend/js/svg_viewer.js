@@ -36,6 +36,7 @@ class SvgViewer {
         this.lastHoverHandle = null;
         this._hoverThrottle = null;
         this._lastHoverPoint = null;
+        this._hoverRequestId = 0;
         this.onHover = null;
 
         this.onClick = null;
@@ -299,7 +300,7 @@ class SvgViewer {
             this.onClick({
                 svgX: pt.x,
                 svgY: pt.y,
-                tol: 10 * this.wcsPerPixel(), // ~10px pick aperture in WCS
+                tol: 5 * this.wcsPerPixel(), // ~5px pick aperture in WCS
                 ctrlKey: e.ctrlKey || e.metaKey,
                 shiftKey: e.shiftKey,
             });
@@ -317,9 +318,10 @@ class SvgViewer {
             this._hoverThrottle = null;
             if (!this._lastHoverPoint || !this.onHover) return;
             this.onHover({
+                requestId: ++this._hoverRequestId,
                 svgX: this._lastHoverPoint.x,
                 svgY: this._lastHoverPoint.y,
-                tol: 12 * this.wcsPerPixel(),
+                tol: 4 * this.wcsPerPixel(),
             });
         }, 60);
     }

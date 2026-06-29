@@ -268,17 +268,22 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "svg_hover":
+                request_id = data.get("request_id", None)
                 handle = _select_handle(state, data)
                 if handle:
                     path_d = entity_mapper.entity_to_svg_path(state, handle)
                     await websocket.send_json({
                         "type": "hover_result",
-                        "data": {"handle": handle, "path_d": path_d},
+                        "data": {
+                            "handle": handle,
+                            "path_d": path_d,
+                            "request_id": request_id,
+                        },
                     })
                 else:
                     await websocket.send_json({
                         "type": "hover_clear",
-                        "data": {},
+                        "data": {"request_id": request_id},
                     })
 
             elif msg_type == "clear_selection":

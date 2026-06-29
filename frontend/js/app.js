@@ -9,6 +9,8 @@ const App = {
     sessionId: null,
     bounds: null,
     scale: 1,
+    hoverInFlight: false,
+    hoverTimeout: null,
 
     init() {
         this._bindUpload();
@@ -70,7 +72,13 @@ const App = {
 
         svgViewer.onHover = (evt) => {
             if (!this.sessionId) return;
-            wsClient.sendHover(evt.svgX, evt.svgY, evt.tol);
+            if (this.hoverInFlight) return;
+            this.hoverInFlight = true;
+            clearTimeout(this.hoverTimeout);
+            this.hoverTimeout = setTimeout(() => {
+                this.hoverInFlight = false;
+            }, 1500);
+            wsClient.sendHover(evt.svgX, evt.svgY, evt.tol, evt.requestId);
         };
     },
 
@@ -131,8 +139,16 @@ const App = {
             });
             document.getElementById("status-generated").textContent = "生成圆: 0";
         } else if (msg.type === "hover_result") {
+            this._completeHoverRequest(data.request_id);
+            if (data.request_id !== undefined && data.request_id !== svgViewer._hoverRequestId) {
+                return;
+            }
             svgViewer.setHover(data.handle, data.path_d);
         } else if (msg.type === "hover_clear") {
+            this._completeHoverRequest(data.request_id);
+            if (data.request_id !== undefined && data.request_id !== svgViewer._hoverRequestId) {
+                return;
+            }
             svgViewer.clearHover();
         } else if (msg.type === "error") {
             this._showError(data.message || "发生错误");
@@ -165,6 +181,12 @@ const App = {
             const el = document.getElementById("svg-loading");
             if (el) el.remove();
         }
+    },
+
+    _completeHoverRequest(requestId) {
+        this.hoverInFlight = false;
+        clearTimeout(this.hoverTimeout);
+        this.hoverTimeout = null;
     },
 
     _showError(message) {

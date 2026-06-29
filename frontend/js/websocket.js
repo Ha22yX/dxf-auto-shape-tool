@@ -47,8 +47,8 @@ class WSClient {
         this.send("svg_click", { svg_x: svgX, svg_y: svgY, append, tol });
     }
 
-    sendHover(svgX, svgY, tol) {
-        this.send("svg_hover", { svg_x: svgX, svg_y: svgY, tol });
+    sendHover(svgX, svgY, tol, requestId) {
+        this.send("svg_hover", { svg_x: svgX, svg_y: svgY, tol, request_id: requestId });
     }
 
     sendParams(params) {
