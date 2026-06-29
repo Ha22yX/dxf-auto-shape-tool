@@ -47,7 +47,10 @@
 }
 
 #local-hover-hit-layer [data-hover-proxy] {
-    opacity: 0;
+    pointer-events: all;
+}
+
+#local-hover-hit-layer [data-hover-proxy] * {
     pointer-events: stroke;
 }
 
@@ -82,7 +85,8 @@
 
 #dxf-content [data-handle].local-hover-highlight,
 #dxf-content .local-hover-highlight [stroke],
-.local-hover-highlight {
+.local-hover-highlight,
+.local-hover-highlight [stroke] {
     stroke: #FFD166 !important;
     stroke-opacity: 1 !important;
     filter: drop-shadow(0 0 5px rgba(255, 209, 102, 0.95));

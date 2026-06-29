@@ -336,42 +336,49 @@ class SvgViewer {
         const hitLayer = document.createElementNS(SVG_NS, "g");
         hitLayer.setAttribute("id", "local-hover-hit-layer");
 
-        const cloneableTags = new Set(["path", "line", "polyline", "polygon", "circle", "ellipse", "rect"]);
         const owners = Array.from(viewport.querySelectorAll("[data-handle]"));
         for (const owner of owners) {
             const handle = owner.getAttribute("data-handle");
             if (!handle || this.hoverOwners.has(handle)) continue;
             this.hoverOwners.set(handle, owner);
 
-            const candidates = [];
-            const ownerTag = owner.tagName.toLowerCase();
-            if (cloneableTags.has(ownerTag)) {
-                candidates.push(owner);
-            }
-            owner.querySelectorAll(Array.from(cloneableTags).join(",")).forEach((el) => {
-                candidates.push(el);
-            });
-
-            for (const source of candidates) {
-                const clone = source.cloneNode(false);
-                clone.removeAttribute("id");
-                clone.removeAttribute("class");
-                clone.setAttribute("data-hover-proxy", "true");
-                clone.setAttribute("data-handle", handle);
-                clone.setAttribute("fill", "none");
-                clone.setAttribute("stroke", "transparent");
-                clone.setAttribute("stroke-width", "18");
-                clone.setAttribute("stroke-linecap", "round");
-                clone.setAttribute("stroke-linejoin", "round");
-                clone.setAttribute("vector-effect", "non-scaling-stroke");
-                clone.setAttribute("pointer-events", "stroke");
-                clone.style.cursor = "pointer";
-                hitLayer.appendChild(clone);
-            }
+            const proxy = owner.cloneNode(true);
+            proxy.removeAttribute("id");
+            proxy.removeAttribute("class");
+            proxy.setAttribute("data-hover-proxy", "true");
+            proxy.setAttribute("data-handle", handle);
+            proxy.style.cursor = "pointer";
+            this._prepareHoverProxy(proxy);
+            hitLayer.appendChild(proxy);
         }
 
         viewport.appendChild(hitLayer);
         return hitLayer;
+    }
+
+    _prepareHoverProxy(root) {
+        const shapeSelector = "path,line,polyline,polygon,circle,ellipse,rect";
+        const shapes = root.matches && root.matches(shapeSelector)
+            ? [root]
+            : Array.from(root.querySelectorAll(shapeSelector));
+        for (const shape of shapes) {
+            shape.removeAttribute("id");
+            shape.removeAttribute("class");
+            shape.setAttribute("fill", "none");
+            shape.setAttribute("stroke", "rgba(255, 255, 255, 0.001)");
+            shape.setAttribute("stroke-width", "24");
+            shape.setAttribute("stroke-linecap", "round");
+            shape.setAttribute("stroke-linejoin", "round");
+            shape.setAttribute("vector-effect", "non-scaling-stroke");
+            shape.setAttribute("pointer-events", "stroke");
+        }
+        root.querySelectorAll("*").forEach((el) => {
+            el.removeAttribute("id");
+            el.removeAttribute("class");
+            if (!el.matches(shapeSelector)) {
+                el.setAttribute("pointer-events", "none");
+            }
+        });
     }
 
     _localHoverTarget(e) {
