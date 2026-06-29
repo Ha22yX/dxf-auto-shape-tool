@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
+from ezdxf.math import Vec2
 import os
 import uuid
 import asyncio
@@ -14,7 +15,7 @@ from backend.state import (
     create_session,
     delete_session,
 )
-from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator
+from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 
 app = FastAPI(title="DXF 自动图形工具")
 
@@ -118,6 +119,26 @@ def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -
     chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
     state.selected_chain = chain
     state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
+    state.manual_apex_distance = None
+    return True
+
+
+def _set_manual_apex(state: SessionState, data: dict) -> bool:
+    if not state.selected_chain:
+        return False
+    svg_x = float(data.get("svg_x", 0))
+    svg_y = float(data.get("svg_y", 0))
+    wcs_x, wcs_y = svg_exporter.svg_to_wcs(
+        svg_x, svg_y, state.svg_bounds, state.svg_scale
+    )
+    sample = geometry_utils.nearest_sample_on_chain(
+        state.working_doc,
+        state.selected_chain,
+        Vec2(wcs_x, wcs_y),
+    )
+    if sample is None:
+        return False
+    state.manual_apex_distance = sample.distance
     return True
 
 
@@ -131,6 +152,7 @@ def regenerate(state: SessionState):
         closed=closed,
         bounds=state.svg_bounds,
         scale=state.svg_scale,
+        manual_apex_distance=state.manual_apex_distance,
     )
 
 
@@ -195,6 +217,7 @@ async def download_dxf(session_id: str):
                 state.selected_chain,
                 state.params,
                 closed=state.chain_info.get("is_closed", False),
+                manual_apex_distance=state.manual_apex_distance,
             )
         except Exception as e:
             print(f"生成圆失败: {e}")
@@ -229,6 +252,7 @@ def _preview_payload(state: SessionState):
             "selected_chain": state.selected_chain,
             "chain_info": state.chain_info,
             "show_generated": state.show_generated,
+            "manual_apex_distance": state.manual_apex_distance,
             "generated_count": state.preview_geometry.get("generated_count", 0),
         },
     }
@@ -268,6 +292,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 regenerate(state)
                 await websocket.send_json(_preview_payload(state))
 
+            elif msg_type == "set_apex":
+                if not _set_manual_apex(state, data):
+                    await websocket.send_json({
+                        "type": "error",
+                        "data": {"message": "请先选中一条边线，再在线上选择顶点"},
+                    })
+                    continue
+                regenerate(state)
+                await websocket.send_json(_preview_payload(state))
+
             elif msg_type == "toggle_preview":
                 state.show_generated = bool(data.get("show_generated", True))
                 await websocket.send_json(_preview_payload(state))
@@ -294,6 +328,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             elif msg_type == "clear_selection":
                 state.selected_handles = []
                 state.selected_chain = []
+                state.manual_apex_distance = None
                 state.chain_info = {
                     "total_length": 0.0,
                     "segment_count": 0,

@@ -159,6 +159,11 @@ body {
     color: #e0e0e0;
 }
 
+.btn.is-active {
+    background: #FFD166;
+    color: #111;
+}
+
 .btn:hover:not(:disabled) {
     opacity: 0.85;
 }

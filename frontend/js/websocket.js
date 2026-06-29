@@ -55,6 +55,10 @@ class WSClient {
         this.send("params_change", { params });
     }
 
+    sendApex(svgX, svgY) {
+        this.send("set_apex", { svg_x: svgX, svg_y: svgY });
+    }
+
     sendToggle(showGenerated) {
         this.send("toggle_preview", { show_generated: showGenerated });
     }

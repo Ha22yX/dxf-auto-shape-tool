@@ -260,6 +260,50 @@ def test_top_gap_skips_apex_when_closed_chain_starts_at_top():
     assert all((p["point"] - apex).magnitude >= 3.0 - 1e-6 for p in placements)
 
 
+def test_manual_apex_distance_overrides_auto_top():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0)], close=False)
+    params = CircleParams(
+        circle_radius=0.5,
+        circles_per_ray=1,
+        circle_spacing=2.0,
+        ray_offset=1.0,
+        ray_count=4,
+        ray_direction="outward",
+        top_gap_distance=2.0,
+    )
+
+    placements = circle_generator.compute_placements(
+        doc,
+        [poly.dxf.handle],
+        params,
+        closed=False,
+        manual_apex_distance=0.0,
+    )
+
+    start = Vec2(0, 0)
+    assert all((p["point"] - start).magnitude >= 2.0 - 1e-6 for p in placements)
+
+
+def test_preview_returns_manual_apex_marker():
+    doc = make_rect_doc()
+    handle = next(e.dxf.handle for e in doc.modelspace())
+    params = CircleParams(ray_count=1, circles_per_ray=1)
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        [handle],
+        params,
+        closed=False,
+        bounds={"min": [0, 0], "max": [100, 80]},
+        scale=1.0,
+        manual_apex_distance=50.0,
+    )
+
+    assert preview["apex_marker"] == {"cx": 50.0, "cy": 80.0, "r": 5.0}
+
+
 def test_circle_generator_on_circle():
     """Selecting a full circle should generate evenly spaced inward/outward circles."""
     doc = ezdxf.new("R2010")

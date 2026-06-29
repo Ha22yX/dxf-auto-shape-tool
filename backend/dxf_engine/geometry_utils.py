@@ -515,6 +515,21 @@ def chain_length(doc, chain: List[str]) -> float:
     return _cumulative_lengths(segments)[-1]
 
 
+def nearest_sample_on_chain(doc, chain: List[str], point: Vec2,
+                            sample_count: Optional[int] = None) -> Optional["SamplePoint"]:
+    total = chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+    if sample_count is None:
+        sample_count = max(257, min(5001, int(total / 2.0)))
+        if sample_count % 2 == 0:
+            sample_count += 1
+    samples = sample_chain(doc, chain, sample_count, closed=False)
+    if not samples:
+        return None
+    return min(samples, key=lambda sample: (sample.point - point).magnitude)
+
+
 def sample_chain(doc, chain: List[str], num_points: int, closed: bool = False,
                  smooth_tangents: bool = True) -> List[SamplePoint]:
     """

@@ -79,21 +79,34 @@ def _is_effectively_closed(samples):
     return (samples[0].point - samples[-1].point).magnitude <= POINT_TOLERANCE
 
 
-def _top_gap_distances(doc, chain, ray_count, gap_distance, closed=False):
-    total = geom.chain_length(doc, chain)
-    if total <= 1e-9 or ray_count <= 0:
-        return []
+def _apex_sample(doc, chain, total, manual_apex_distance=None):
+    if manual_apex_distance is not None:
+        distance = max(0.0, min(total, manual_apex_distance))
+        samples = geom.sample_chain_at_distances(doc, chain, [distance], smooth_tangents=True)
+        return samples[0] if samples else None
 
     dense_count = max(129, min(4001, int(total / 2.0) if total > 0 else 129))
     if dense_count % 2 == 0:
         dense_count += 1
     dense = geom.sample_chain(doc, chain, dense_count, closed=False)
     if not dense:
+        return None
+    return max(dense, key=lambda sample: sample.point.y)
+
+
+def _top_gap_distances(doc, chain, ray_count, gap_distance, closed=False,
+                       manual_apex_distance=None):
+    total = geom.chain_length(doc, chain)
+    if total <= 1e-9 or ray_count <= 0:
         return []
 
-    apex = max(dense, key=lambda sample: sample.point.y)
+    apex = _apex_sample(doc, chain, total, manual_apex_distance=manual_apex_distance)
+    if not apex:
+        return []
+
     gap = max(0.0, gap_distance)
-    cyclic = closed or _is_effectively_closed(dense)
+    endpoint_samples = geom.sample_chain_at_distances(doc, chain, [0.0, total], smooth_tangents=False)
+    cyclic = closed or _is_effectively_closed(endpoint_samples)
 
     if cyclic:
         usable_length = total - gap * 2
@@ -123,7 +136,16 @@ def _top_gap_distances(doc, chain, ray_count, gap_distance, closed=False):
     return distances
 
 
-def _samples_for_generation(doc, chain, params, closed):
+def _manual_apex_marker(doc, chain, manual_apex_distance):
+    if manual_apex_distance is None:
+        return None
+    total = geom.chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+    return _apex_sample(doc, chain, total, manual_apex_distance=manual_apex_distance)
+
+
+def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=None):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
         generated_reach = (
@@ -132,7 +154,14 @@ def _samples_for_generation(doc, chain, params, closed):
             + params.circle_radius
         )
         effective_gap = top_gap + generated_reach
-        distances = _top_gap_distances(doc, chain, params.ray_count, effective_gap, closed=closed)
+        distances = _top_gap_distances(
+            doc,
+            chain,
+            params.ray_count,
+            effective_gap,
+            closed=closed,
+            manual_apex_distance=manual_apex_distance,
+        )
         return geom.sample_chain_at_distances(doc, chain, distances, smooth_tangents=True)
 
     skip_terminal_endpoint = params.dedupe_closed_rays
@@ -169,7 +198,8 @@ def _oriented_normals(doc, chain, samples, params, closed):
     return _keep_normal_continuity(oriented_normals)
 
 
-def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool = False):
+def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool = False,
+                       manual_apex_distance=None):
     """Pure-math placement of circles/rays along the chain (WCS coordinates).
 
     Returns a list of dicts: ``{point, ray_start, ray_end, centers}`` where
@@ -180,7 +210,9 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
         return []
 
     top_gap_active = getattr(params, "top_gap_distance", 0.0) > 0
-    samples = _samples_for_generation(doc, chain, params, closed)
+    samples = _samples_for_generation(
+        doc, chain, params, closed, manual_apex_distance=manual_apex_distance
+    )
     if not samples:
         return []
 
@@ -206,13 +238,16 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
 
 
 def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
-                             closed: bool, bounds: dict, scale: float) -> dict:
+                             closed: bool, bounds: dict, scale: float,
+                             manual_apex_distance=None) -> dict:
     """Compute overlay geometry expressed in base-SVG output units.
 
     Does NOT modify any DXF document. ``bounds``/``scale`` come from
     ``svg_exporter.doc_to_base_svg`` and define the WCS -> SVG transform.
     """
-    placements = compute_placements(doc, chain, params, closed=closed)
+    placements = compute_placements(
+        doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
+    )
 
     circles = []
     rays = []
@@ -229,11 +264,17 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         rays.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
 
     chain_path = _chain_path_d(doc, chain, closed, bounds, scale)
+    apex_marker = None
+    apex_sample = _manual_apex_marker(doc, chain, manual_apex_distance)
+    if apex_sample is not None:
+        ax, ay = _to_svg(apex_sample.point.x, apex_sample.point.y, bounds, scale)
+        apex_marker = {"cx": ax, "cy": ay, "r": max(5.0, params.circle_radius * scale)}
 
     return {
         "circles": circles,
         "rays": rays,
         "selected_chain_path": chain_path,
+        "apex_marker": apex_marker,
         "generated_count": len(circles),
     }
 
@@ -271,12 +312,15 @@ def _chain_path_d(doc, chain: List[str], closed: bool, bounds: dict, scale: floa
     return " ".join(parts)
 
 
-def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams, closed: bool = False) -> Tuple[List[str], List[str]]:
+def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams,
+                     closed: bool = False, manual_apex_distance=None) -> Tuple[List[str], List[str]]:
     """Write circle and ray entities into ``doc`` (used for the saved DXF).
 
     Returns (circle_handles, ray_handles).
     """
-    placements = compute_placements(doc, chain, params, closed=closed)
+    placements = compute_placements(
+        doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
+    )
     if not placements:
         return [], []
 

@@ -29,8 +29,16 @@
     cursor: pointer;
 }
 
+.svg-container.is-picking-apex {
+    cursor: crosshair;
+}
+
 #hover-highlight-path {
     filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.8));
+}
+
+#manual-apex-marker {
+    filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.9));
 }
 
 #dxf-content {

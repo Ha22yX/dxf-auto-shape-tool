@@ -11,6 +11,7 @@ const App = {
     scale: 1,
     hoverInFlight: false,
     hoverTimeout: null,
+    apexPickMode: false,
 
     init() {
         this._bindUpload();
@@ -65,6 +66,11 @@ const App = {
     _bindViewer() {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
+            if (this.apexPickMode) {
+                wsClient.sendApex(evt.svgX, evt.svgY);
+                this._setApexPickMode(false);
+                return;
+            }
             wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol);
         };
 
@@ -101,7 +107,14 @@ const App = {
         };
     },
 
-    _bindActions() {        document.getElementById("save-btn").addEventListener("click", () => {
+    _bindActions() {
+        const pickApexBtn = document.getElementById("pick-apex-btn");
+        pickApexBtn.addEventListener("click", () => {
+            if (!this.sessionId || pickApexBtn.disabled) return;
+            this._setApexPickMode(!this.apexPickMode);
+        });
+
+        document.getElementById("save-btn").addEventListener("click", () => {
             if (!this.sessionId) return;
             const a = document.createElement("a");
             a.href = API.downloadUrl(this.sessionId);
@@ -115,6 +128,7 @@ const App = {
             .getElementById("clear-selection-btn")
             .addEventListener("click", () => {
                 if (!this.sessionId) return;
+                this._setApexPickMode(false);
                 // Ask backend to clear selection by sending an explicit clear message.
                 wsClient.send("clear_selection", {});
             });
@@ -133,6 +147,7 @@ const App = {
             if (data.chain_info) {
                 this._updateStatus({ chain_info: data.chain_info });
             }
+            this._updateApexButton(data);
             if (data.generated_count !== undefined) {
                 document.getElementById(
                     "status-generated",
@@ -141,6 +156,8 @@ const App = {
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
             svgViewer.clearHover();
+            this._setApexPickMode(false);
+            this._updateApexButton({ selected_chain: [] });
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
             });
@@ -194,6 +211,26 @@ const App = {
         this.hoverInFlight = false;
         clearTimeout(this.hoverTimeout);
         this.hoverTimeout = null;
+    },
+
+    _setApexPickMode(active) {
+        this.apexPickMode = Boolean(active);
+        svgViewer.setApexPickMode(this.apexPickMode);
+        const btn = document.getElementById("pick-apex-btn");
+        if (btn) {
+            btn.classList.toggle("is-active", this.apexPickMode);
+            btn.textContent = this.apexPickMode ? "点击线上顶点" : "选择顶点";
+        }
+    },
+
+    _updateApexButton(data) {
+        const btn = document.getElementById("pick-apex-btn");
+        if (!btn) return;
+        const hasSelection = Boolean(data.selected_chain && data.selected_chain.length);
+        btn.disabled = !this.sessionId || !hasSelection;
+        if (!hasSelection) {
+            this._setApexPickMode(false);
+        }
     },
 
     _showError(message) {

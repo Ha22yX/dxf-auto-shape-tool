@@ -50,6 +50,7 @@ class SessionState:
     working_doc: ezdxf.document.Drawing
     selected_handles: list[str] = field(default_factory=list)
     selected_chain: list[str] = field(default_factory=list)
+    manual_apex_distance: Optional[float] = None
     generated_handles: list[str] = field(default_factory=list)
     generated_ray_handles: list[str] = field(default_factory=list)
     entity_svg_transform: Matrix44 = field(default_factory=Matrix44)

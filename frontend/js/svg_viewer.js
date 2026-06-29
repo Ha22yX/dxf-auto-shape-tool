@@ -133,6 +133,8 @@ class SvgViewer {
         // Selection highlight: replace any existing chain path.
         const oldPath = this.overlay.querySelector("#selected-chain-path");
         if (oldPath) oldPath.remove();
+        const oldApex = this.overlay.querySelector("#manual-apex-marker");
+        if (oldApex) oldApex.remove();
         const d = geometry.selected_chain_path;
         if (d) {
             const path = document.createElementNS(SVG_NS, "path");
@@ -145,6 +147,37 @@ class SvgViewer {
             path.setAttribute("vector-effect", "non-scaling-stroke");
             this.overlay.insertBefore(path, this.generatedLayer);
         }
+
+        const marker = geometry.apex_marker;
+        if (marker) {
+            const group = document.createElementNS(SVG_NS, "g");
+            group.setAttribute("id", "manual-apex-marker");
+            group.setAttribute("pointer-events", "none");
+
+            const outer = document.createElementNS(SVG_NS, "circle");
+            outer.setAttribute("cx", marker.cx.toFixed(1));
+            outer.setAttribute("cy", marker.cy.toFixed(1));
+            outer.setAttribute("r", marker.r.toFixed(1));
+            outer.setAttribute("fill", "rgba(255, 209, 102, 0.18)");
+            outer.setAttribute("stroke", "#FFD166");
+            outer.setAttribute("stroke-width", "2.2");
+            outer.setAttribute("vector-effect", "non-scaling-stroke");
+
+            const dot = document.createElementNS(SVG_NS, "circle");
+            dot.setAttribute("cx", marker.cx.toFixed(1));
+            dot.setAttribute("cy", marker.cy.toFixed(1));
+            dot.setAttribute("r", "2.8");
+            dot.setAttribute("fill", "#FFD166");
+            dot.setAttribute("vector-effect", "non-scaling-stroke");
+
+            group.appendChild(outer);
+            group.appendChild(dot);
+            this.overlay.insertBefore(group, this.generatedLayer);
+        }
+    }
+
+    setApexPickMode(active) {
+        this.container.classList.toggle("is-picking-apex", Boolean(active));
     }
 
     resetView() {
