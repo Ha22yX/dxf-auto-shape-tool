@@ -409,6 +409,15 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     circles = []
     removed_circles = []
     rays = []
+    basis = []
+    for p in placements:
+        x, y = _to_svg(p["point"].x, p["point"].y, bounds, scale)
+        basis.append({
+            "x": x,
+            "y": y,
+            "nx": p["normal"].x * scale,
+            "ny": -p["normal"].y * scale,
+        })
     for item in kept_items:
         c = item["center"]
         cx, cy = _to_svg(c.x, c.y, bounds, scale)
@@ -441,6 +450,8 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "circles": circles,
         "removed_circles": removed_circles,
         "rays": rays,
+        "basis": basis,
+        "scale": scale,
         "selected_chain_path": chain_path,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),

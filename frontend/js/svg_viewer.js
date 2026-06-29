@@ -19,6 +19,8 @@ class SvgViewer {
         this.hoverHitLayer = null;
         this.hoverVisualLayer = null;
         this.hoverOwners = new Map();
+        this.lastGeometry = null;
+        this.lastShowGenerated = true;
 
         // View transform
         this.scale = 1;
@@ -117,11 +119,26 @@ class SvgViewer {
     setOverlay(geometry, showGenerated) {
         if (!this.generatedLayer) return;
         geometry = geometry || {};
+        this.lastGeometry = geometry;
+        this.lastShowGenerated = showGenerated;
 
-        // Rebuild generated layer (rays + circles).
+        this._renderGeneratedGeometry(geometry, showGenerated);
+        this._renderStaticOverlay(geometry);
+    }
+
+    previewParams(params, showGenerated = this.lastShowGenerated) {
+        if (!this.lastGeometry || !this.lastGeometry.basis || !this.lastGeometry.basis.length) {
+            return false;
+        }
+        const geometry = this._geometryFromBasis(this.lastGeometry, params);
+        this._renderGeneratedGeometry(geometry, showGenerated);
+        return true;
+    }
+
+    _renderGeneratedGeometry(geometry, showGenerated) {
+        if (!this.generatedLayer) return;
         this.generatedLayer.innerHTML = "";
         this.generatedLayer.style.display = showGenerated ? "" : "none";
-
         const rays = geometry.rays || [];
         for (const r of rays) {
             const line = document.createElementNS(SVG_NS, "line");
@@ -164,7 +181,10 @@ class SvgViewer {
             circle.setAttribute("vector-effect", "non-scaling-stroke");
             this.generatedLayer.appendChild(circle);
         }
+    }
 
+    _renderStaticOverlay(geometry) {
+        if (!this.overlay) return;
         // Selection highlight: replace any existing chain path.
         const oldPath = this.overlay.querySelector("#selected-chain-path");
         if (oldPath) oldPath.remove();
@@ -279,6 +299,91 @@ class SvgViewer {
             group.appendChild(dot);
             this.overlay.insertBefore(group, this.generatedLayer);
         }
+    }
+
+    _geometryFromBasis(baseGeometry, params) {
+        const basis = baseGeometry.basis || [];
+        const svgScale = Number(baseGeometry.scale || this.baseScale || 1);
+        const rayCount = Math.max(0, Math.min(basis.length, Number(params.ray_count || basis.length)));
+        const circlesPerRay = Math.max(0, Math.floor(Number(params.circles_per_ray || 0)));
+        const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
+        const spacing = Number(params.circle_spacing || 0) * svgScale;
+        const offset = Number(params.ray_offset || 0) * svgScale;
+        const source = basis.slice(0, rayCount);
+        const allCircles = [];
+        const rays = [];
+
+        for (const b of source) {
+            let nx = Number(b.nx || 0);
+            let ny = Number(b.ny || 0);
+            const mag = Math.hypot(nx, ny);
+            if (mag <= 1e-9) continue;
+            nx /= mag;
+            ny /= mag;
+            const rayEndDistance = offset + Math.max(0, circlesPerRay - 1) * spacing;
+            rays.push({
+                x1: b.x,
+                y1: b.y,
+                x2: b.x + nx * rayEndDistance,
+                y2: b.y + ny * rayEndDistance,
+            });
+            for (let i = 0; i < circlesPerRay; i++) {
+                const d = offset + i * spacing;
+                allCircles.push({
+                    cx: b.x + nx * d,
+                    cy: b.y + ny * d,
+                    r: radius,
+                });
+            }
+        }
+
+        const pruned = this._quickPruneOverlaps(allCircles, radius);
+        return {
+            rays,
+            circles: pruned.kept,
+            removed_circles: pruned.removed,
+        };
+    }
+
+    _quickPruneOverlaps(circles, radius) {
+        if (!circles.length || radius <= 0) {
+            return { kept: circles, removed: [] };
+        }
+        const minDistance = radius * 2 - 0.01;
+        const minDistanceSq = minDistance * minDistance;
+        const cellSize = Math.max(radius * 2, 1);
+        const cells = new Map();
+        const kept = [];
+        const removed = [];
+
+        const key = (ix, iy) => `${ix},${iy}`;
+        for (const circle of circles) {
+            const ix = Math.floor(circle.cx / cellSize);
+            const iy = Math.floor(circle.cy / cellSize);
+            let overlaps = false;
+            for (let dx = -1; dx <= 1 && !overlaps; dx++) {
+                for (let dy = -1; dy <= 1 && !overlaps; dy++) {
+                    const bucket = cells.get(key(ix + dx, iy + dy)) || [];
+                    for (const other of bucket) {
+                        const ox = circle.cx - other.cx;
+                        const oy = circle.cy - other.cy;
+                        if (ox * ox + oy * oy < minDistanceSq) {
+                            overlaps = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (overlaps) {
+                removed.push(circle);
+                continue;
+            }
+            kept.push(circle);
+            const bucketKey = key(ix, iy);
+            if (!cells.has(bucketKey)) cells.set(bucketKey, []);
+            cells.get(bucketKey).push(circle);
+        }
+        return { kept, removed };
     }
 
     setApexPickMode(active) {

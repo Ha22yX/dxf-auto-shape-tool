@@ -74,6 +74,7 @@ class ParameterPanel {
         this.togglePreview = document.getElementById("toggle-preview");
 
         this.onParamsChange = null;
+        this.onParamsPreview = null;
         this.onToggleChange = null;
 
         this._debounceTimer = null;
@@ -241,10 +242,11 @@ class ParameterPanel {
 
     _bindEvents() {
         const triggerChange = () => {
+            if (this.onParamsPreview) this.onParamsPreview(this.getParams());
             clearTimeout(this._debounceTimer);
             this._debounceTimer = setTimeout(() => {
                 if (this.onParamsChange) this.onParamsChange(this.getParams());
-            }, 100);
+            }, 260);
         };
 
         for (const key of this.keys) {

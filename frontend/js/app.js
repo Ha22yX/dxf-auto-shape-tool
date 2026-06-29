@@ -85,6 +85,11 @@ const App = {
     },
 
     _bindParameters() {
+        parameterPanel.onParamsPreview = (params) => {
+            if (!this.sessionId) return;
+            svgViewer.previewParams(params, parameterPanel.getShowGenerated());
+        };
+
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;
             wsClient.sendParams(params);

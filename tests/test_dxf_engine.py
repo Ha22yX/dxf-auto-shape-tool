@@ -534,6 +534,32 @@ def test_preview_rays_start_on_selected_edge():
     assert (ray["x1"], ray["y1"]) != (circle["cx"], circle["cy"])
 
 
+def test_preview_returns_basis_for_fast_frontend_redraw():
+    doc = make_rect_doc()
+    handle = next(e.dxf.handle for e in doc.modelspace())
+    params = CircleParams(
+        circle_radius=1.0,
+        circles_per_ray=2,
+        circle_spacing=5.0,
+        ray_offset=10.0,
+        ray_count=3,
+        ray_direction="outward",
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        [handle],
+        params,
+        closed=False,
+        bounds={"min": [0, 0], "max": [100, 80]},
+        scale=2.0,
+    )
+
+    assert preview["scale"] == 2.0
+    assert len(preview["basis"]) == 3
+    assert {"x", "y", "nx", "ny"} <= set(preview["basis"][0])
+
+
 def test_open_chain_normals_do_not_flip_sides():
     doc = ezdxf.new("R2010")
     samples = [
