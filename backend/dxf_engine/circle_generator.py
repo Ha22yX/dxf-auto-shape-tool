@@ -354,6 +354,46 @@ def _distance_square(a: Vec2, b: Vec2):
     return delta.x * delta.x + delta.y * delta.y
 
 
+def _segment_distance(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2):
+    u = a2 - a1
+    v = b2 - b1
+    w = a1 - b1
+    a = u.dot(u)
+    b = u.dot(v)
+    c = v.dot(v)
+    d = u.dot(w)
+    e = v.dot(w)
+    denominator = a * c - b * b
+
+    if a <= 1e-12 and c <= 1e-12:
+        return (a1 - b1).magnitude
+    if a <= 1e-12:
+        t = max(0.0, min(1.0, e / c if c > 1e-12 else 0.0))
+        return (a1 - (b1 + v * t)).magnitude
+    if c <= 1e-12:
+        s = max(0.0, min(1.0, -d / a if a > 1e-12 else 0.0))
+        return ((a1 + u * s) - b1).magnitude
+
+    if denominator > 1e-12:
+        s = max(0.0, min(1.0, (b * e - c * d) / denominator))
+    else:
+        s = 0.0
+
+    t_numerator = b * s + e
+    if t_numerator < 0.0:
+        t = 0.0
+        s = max(0.0, min(1.0, -d / a))
+    elif t_numerator > c:
+        t = 1.0
+        s = max(0.0, min(1.0, (b - d) / a))
+    else:
+        t = t_numerator / c
+
+    closest_a = a1 + u * s
+    closest_b = b1 + v * t
+    return (closest_a - closest_b).magnitude
+
+
 def _capsule_for_placement(placement, params, kept_items=None):
     if params.circle_radius <= 0 or params.circles_per_ray <= 0:
         return None
@@ -558,6 +598,54 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
             loser_group = g1 if (len(groups[g1]), g1_axis, -g1) < (len(groups[g2]), g2_axis, -g2) else g2
             removed_ids.update(groups[loser_group])
 
+    while True:
+        active_items = [
+            item
+            for item in items
+            if item["id"] not in removed_ids
+        ]
+        best_conflict = _best_capsule_conflict(
+            placements,
+            params,
+            axis,
+            active_items,
+        )
+        if best_conflict is None:
+            break
+
+        _, first_capsule, second_capsule = best_conflict
+        candidate_groups = []
+        for capsule_info in (first_capsule, second_capsule):
+            group_ids = {
+                item_to_group[item_id]
+                for item_id in capsule_info["outer_ids"]
+                if item_id in item_to_group
+            }
+            for group_id in group_ids:
+                active_group_ids = [
+                    item_id
+                    for item_id in groups[group_id]
+                    if item_id not in removed_ids
+                ]
+                if active_group_ids:
+                    candidate_groups.append((group_id, active_group_ids))
+
+        if not candidate_groups:
+            break
+
+        def removal_key(candidate):
+            group_id, active_group_ids = candidate
+            max_circle_index = max(by_id[item_id]["circle_index"] for item_id in active_group_ids)
+            return (
+                max_circle_index,
+                -group_scores[group_id],
+                -len(active_group_ids),
+                -group_id,
+            )
+
+        loser_group, loser_ids = max(candidate_groups, key=removal_key)
+        removed_ids.update(loser_ids)
+
     kept_ids = {item["id"] for item in items if item["id"] not in removed_ids}
     for item in sorted(
         items,
@@ -574,6 +662,37 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
         if not overlaps_kept:
             kept_ids.add(item_id)
 
+    while True:
+        active_items = [item for item in items if item["id"] in kept_ids]
+        best_conflict = _best_capsule_conflict(
+            placements,
+            params,
+            axis,
+            active_items,
+        )
+        if best_conflict is None:
+            break
+
+        _, first_capsule, second_capsule = best_conflict
+        candidate_ids = []
+        for capsule_info in (first_capsule, second_capsule):
+            candidate_ids.extend(
+                item_id
+                for item_id in capsule_info["outer_ids"]
+                if item_id in kept_ids
+            )
+        if not candidate_ids:
+            break
+        loser = max(
+            candidate_ids,
+            key=lambda item_id: (
+                by_id[item_id]["circle_index"],
+                -_circle_priority(by_id[item_id], axis_center_x),
+                -item_id,
+            ),
+        )
+        kept_ids.remove(loser)
+
     kept = []
     removed = []
     for item in items:
@@ -589,6 +708,59 @@ def _items_by_placement(items):
     for item in items:
         by_placement.setdefault(item["placement_index"], []).append(item)
     return by_placement
+
+
+def _capsules_from_active_items(placements, params, axis, active_items):
+    capsules = []
+    by_placement = _items_by_placement(active_items)
+    for placement_index, placement_items in by_placement.items():
+        placement = placements[placement_index]
+        if _inside_capsule_axis_gap(placement, axis, params):
+            continue
+        capsule = _capsule_for_placement(placement, params, placement_items)
+        if not capsule:
+            continue
+        outer_index = max(item["circle_index"] for item in placement_items)
+        outer_ids = [
+            item["id"]
+            for item in placement_items
+            if item["circle_index"] == outer_index
+        ]
+        capsules.append({
+            "placement_index": placement_index,
+            "capsule": capsule,
+            "outer_ids": outer_ids,
+            "outer_index": outer_index,
+        })
+    return capsules
+
+
+def _best_capsule_conflict(placements, params, axis, active_items):
+    capsules = _capsules_from_active_items(placements, params, axis, active_items)
+    if len(capsules) <= 1:
+        return None
+
+    min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
+    best_conflict = None
+    for i, first in enumerate(capsules):
+        first_capsule = first["capsule"]
+        for second in capsules[i + 1:]:
+            if first["placement_index"] == second["placement_index"]:
+                continue
+            second_capsule = second["capsule"]
+            distance = _segment_distance(
+                first_capsule["near"],
+                first_capsule["far"],
+                second_capsule["near"],
+                second_capsule["far"],
+            )
+            penetration = min_distance - distance
+            if penetration <= 0:
+                continue
+            conflict = (penetration, first, second)
+            if best_conflict is None or conflict[0] > best_conflict[0]:
+                best_conflict = conflict
+    return best_conflict
 
 
 def compute_preview_geometry(doc, chain: List[str], params: CircleParams,

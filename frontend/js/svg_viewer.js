@@ -341,6 +341,10 @@ class SvgViewer {
         const horizontalAxisY = horizontalAxis
             ? (Number(horizontalAxis.y1) + Number(horizontalAxis.y2)) / 2
             : null;
+        const verticalAxis = baseGeometry.symmetry_axes && baseGeometry.symmetry_axes.vertical;
+        const verticalAxisX = verticalAxis
+            ? (Number(verticalAxis.x1) + Number(verticalAxis.x2)) / 2
+            : null;
         const maxCapsuleStart = Math.max(0.1, Number(params.ray_offset || 0));
         const capsuleStart = Math.max(
             0.1,
@@ -376,7 +380,18 @@ class SvgViewer {
             }
         }
 
-        const pruned = this._quickPruneOverlaps(allCircles, radius);
+        let pruned = this._quickPruneOverlaps(allCircles, radius);
+        pruned = this._quickPruneCapsuleOverlaps(
+            source,
+            pruned.kept,
+            pruned.removed,
+            radius,
+            capsuleStart,
+            horizontalAxisY,
+            aboveAxisGap,
+            belowAxisGap,
+            verticalAxisX,
+        );
         const capsules = this._capsulesFromKeptCircles(
             source,
             pruned.kept,
@@ -402,6 +417,7 @@ class SvgViewer {
         axisY = null,
         aboveAxisGap = 0,
         belowAxisGap = 0,
+        axisX = null,
     ) {
         const groups = new Map();
         for (const circle of keptCircles) {
@@ -511,6 +527,198 @@ class SvgViewer {
             cells.get(bucketKey).push(circle);
         }
         return { kept, removed };
+    }
+
+    _quickPruneCapsuleOverlaps(
+        basis,
+        keptCircles,
+        removedCircles,
+        radius,
+        nearDistance,
+        axisY = null,
+        aboveAxisGap = 0,
+        belowAxisGap = 0,
+    ) {
+        if (keptCircles.length <= 1 || radius <= 0) {
+            return { kept: keptCircles, removed: removedCircles };
+        }
+        const kept = keptCircles.slice();
+        const removed = removedCircles.slice();
+        const minDistance = radius * 2 - 0.01;
+
+        for (let guard = 0; guard < 10000; guard++) {
+            const capsules = this._quickCapsuleRecords(
+                basis,
+                kept,
+                radius,
+                nearDistance,
+                axisY,
+                aboveAxisGap,
+                belowAxisGap,
+            );
+            let best = null;
+            for (let i = 0; i < capsules.length; i++) {
+                for (let j = i + 1; j < capsules.length; j++) {
+                    const distance = this._segmentDistance(
+                        capsules[i].near,
+                        capsules[i].far,
+                        capsules[j].near,
+                        capsules[j].far,
+                    );
+                    const penetration = minDistance - distance;
+                    if (penetration <= 0) continue;
+                    if (!best || penetration > best.penetration) {
+                        best = { penetration, first: capsules[i], second: capsules[j] };
+                    }
+                }
+            }
+            if (!best) break;
+
+            const candidates = [best.first.outerCircle, best.second.outerCircle].filter(Boolean);
+            if (!candidates.length) break;
+            const loserIndex = candidates.reduce((bestIndex, circle, index) => {
+                const bestCircle = candidates[bestIndex];
+                if (circle.circleIndex !== bestCircle.circleIndex) {
+                    return circle.circleIndex > bestCircle.circleIndex ? index : bestIndex;
+                }
+                return circle.placementIndex > bestCircle.placementIndex ? index : bestIndex;
+            }, 0);
+            const loser = candidates[loserIndex];
+            const keptIndex = kept.indexOf(loser);
+            if (keptIndex < 0) break;
+            kept.splice(keptIndex, 1);
+            removed.push(loser);
+            const mirror = this._findMirrorCircle(kept, loser, axisX, radius);
+            if (mirror) {
+                const mirrorIndex = kept.indexOf(mirror);
+                if (mirrorIndex >= 0) {
+                    kept.splice(mirrorIndex, 1);
+                    removed.push(mirror);
+                }
+            }
+        }
+        return { kept, removed };
+    }
+
+    _findMirrorCircle(circles, circle, axisX = null, radius = 0) {
+        if (axisX === null) return null;
+        const mirroredX = 2 * axisX - circle.cx;
+        const candidates = circles.filter((candidate) => (
+            candidate !== circle
+            && candidate.circleIndex === circle.circleIndex
+            && (candidate.cx - axisX) * (circle.cx - axisX) <= 0
+        ));
+        if (!candidates.length) return null;
+        const best = candidates.reduce((current, candidate) => {
+            const currentDistance = Math.hypot(current.cx - mirroredX, current.cy - circle.cy);
+            const candidateDistance = Math.hypot(candidate.cx - mirroredX, candidate.cy - circle.cy);
+            return candidateDistance < currentDistance ? candidate : current;
+        });
+        const limit = Math.max(radius * 4, 1);
+        return Math.hypot(best.cx - mirroredX, best.cy - circle.cy) <= limit ? best : null;
+    }
+
+    _quickCapsuleRecords(
+        basis,
+        keptCircles,
+        radius,
+        nearDistance,
+        axisY = null,
+        aboveAxisGap = 0,
+        belowAxisGap = 0,
+    ) {
+        const groups = new Map();
+        for (const circle of keptCircles) {
+            if (!groups.has(circle.placementIndex)) groups.set(circle.placementIndex, []);
+            groups.get(circle.placementIndex).push(circle);
+        }
+
+        const capsules = [];
+        for (const [placementIndex, circles] of groups.entries()) {
+            const base = basis[placementIndex];
+            if (!base || !circles.length) continue;
+            if (this._basisInsideCapsuleAxisGap(base, axisY, aboveAxisGap, belowAxisGap)) {
+                continue;
+            }
+            const sorted = circles.slice().sort((a, b) => a.circleIndex - b.circleIndex);
+            const farCircle = sorted[sorted.length - 1];
+            const dx = farCircle.cx - base.x;
+            const dy = farCircle.cy - base.y;
+            const farDistance = Math.hypot(dx, dy);
+            if (farDistance <= nearDistance + 1e-6) continue;
+            const nx = dx / farDistance;
+            const ny = dy / farDistance;
+            capsules.push({
+                placementIndex,
+                outerCircle: farCircle,
+                near: {
+                    x: base.x + nx * nearDistance,
+                    y: base.y + ny * nearDistance,
+                },
+                far: {
+                    x: farCircle.cx,
+                    y: farCircle.cy,
+                },
+            });
+        }
+        return capsules;
+    }
+
+    _basisInsideCapsuleAxisGap(base, axisY = null, aboveAxisGap = 0, belowAxisGap = 0) {
+        if (axisY === null) return false;
+        const dy = axisY - Number(base.y);
+        if (dy >= 0 && aboveAxisGap > 0 && dy <= aboveAxisGap + 0.001) {
+            return true;
+        }
+        return dy < 0 && belowAxisGap > 0 && Math.abs(dy) <= belowAxisGap + 0.001;
+    }
+
+    _segmentDistance(a1, a2, b1, b2) {
+        const ux = a2.x - a1.x;
+        const uy = a2.y - a1.y;
+        const vx = b2.x - b1.x;
+        const vy = b2.y - b1.y;
+        const wx = a1.x - b1.x;
+        const wy = a1.y - b1.y;
+        const a = ux * ux + uy * uy;
+        const b = ux * vx + uy * vy;
+        const c = vx * vx + vy * vy;
+        const d = ux * wx + uy * wy;
+        const e = vx * wx + vy * wy;
+        const denominator = a * c - b * b;
+
+        if (a <= 1e-12 && c <= 1e-12) {
+            return Math.hypot(a1.x - b1.x, a1.y - b1.y);
+        }
+        if (a <= 1e-12) {
+            const t = Math.max(0, Math.min(1, c > 1e-12 ? e / c : 0));
+            return Math.hypot(a1.x - (b1.x + vx * t), a1.y - (b1.y + vy * t));
+        }
+        if (c <= 1e-12) {
+            const s = Math.max(0, Math.min(1, -d / a));
+            return Math.hypot((a1.x + ux * s) - b1.x, (a1.y + uy * s) - b1.y);
+        }
+
+        let s = denominator > 1e-12
+            ? Math.max(0, Math.min(1, (b * e - c * d) / denominator))
+            : 0;
+        const tNumerator = b * s + e;
+        let t;
+        if (tNumerator < 0) {
+            t = 0;
+            s = Math.max(0, Math.min(1, -d / a));
+        } else if (tNumerator > c) {
+            t = 1;
+            s = Math.max(0, Math.min(1, (b - d) / a));
+        } else {
+            t = tNumerator / c;
+        }
+
+        const ax = a1.x + ux * s;
+        const ay = a1.y + uy * s;
+        const bx = b1.x + vx * t;
+        const by = b1.y + vy * t;
+        return Math.hypot(ax - bx, ay - by);
     }
 
     resetView() {
