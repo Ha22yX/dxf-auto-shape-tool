@@ -8,12 +8,17 @@ class WSClient {
         this.onMessage = null;
         this.onError = null;
         this.onClose = null;
+        this._paramSeq = 0;
+        this._activeParamSeq = null;
+        this._paramsInFlight = false;
+        this._pendingParams = null;
     }
 
     connect(sessionId) {
         if (this.ws) {
             this.ws.close();
         }
+        this._resetParamQueue();
         this.sessionId = sessionId;
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const url = `${protocol}//${window.location.host}/ws/${sessionId}`;
@@ -25,6 +30,7 @@ class WSClient {
 
         this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
+            this._handleInternalMessage(msg);
             if (this.onMessage) this.onMessage(msg);
         };
 
@@ -52,7 +58,49 @@ class WSClient {
     }
 
     sendParams(params) {
-        this.send("params_change", { params });
+        if (this._paramsInFlight) {
+            this._pendingParams = params;
+            return;
+        }
+        this._sendParamsNow(params);
+    }
+
+    _sendParamsNow(params) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this._pendingParams = params;
+            return;
+        }
+        this._paramsInFlight = true;
+        this._activeParamSeq = ++this._paramSeq;
+        this.ws.send(JSON.stringify({
+            type: "params_change",
+            data: { params, seq: this._activeParamSeq },
+        }));
+    }
+
+    _handleInternalMessage(msg) {
+        const data = msg.data || {};
+        if (msg.type === "error") {
+            this._resetParamQueue();
+            return;
+        }
+        if (msg.type !== "preview_update" || data.params_seq === undefined) return;
+        if (data.params_seq !== this._activeParamSeq) return;
+
+        this._paramsInFlight = false;
+        this._activeParamSeq = null;
+        if (this._pendingParams) {
+            const nextParams = this._pendingParams;
+            this._pendingParams = null;
+            data.stale_params_preview = true;
+            this._sendParamsNow(nextParams);
+        }
+    }
+
+    _resetParamQueue() {
+        this._paramsInFlight = false;
+        this._activeParamSeq = null;
+        this._pendingParams = null;
     }
 
     sendApex(svgX, svgY, tol) {
@@ -68,6 +116,7 @@ class WSClient {
             this.ws.close();
             this.ws = null;
         }
+        this._resetParamQueue();
     }
 }
 

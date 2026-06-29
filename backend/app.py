@@ -283,18 +283,20 @@ async def clear_session(session_id: str):
     return {"success": True}
 
 
-def _preview_payload(state: SessionState):
+def _preview_payload(state: SessionState, **extra_data):
+    data = {
+        "preview_geometry": state.preview_geometry,
+        "selected_handles": state.selected_handles,
+        "selected_chain": state.selected_chain,
+        "chain_info": state.chain_info,
+        "show_generated": state.show_generated,
+        "manual_apex_distance": state.manual_apex_distance,
+        "generated_count": state.preview_geometry.get("generated_count", 0),
+    }
+    data.update(extra_data)
     return {
         "type": "preview_update",
-        "data": {
-            "preview_geometry": state.preview_geometry,
-            "selected_handles": state.selected_handles,
-            "selected_chain": state.selected_chain,
-            "chain_info": state.chain_info,
-            "show_generated": state.show_generated,
-            "manual_apex_distance": state.manual_apex_distance,
-            "generated_count": state.preview_geometry.get("generated_count", 0),
-        },
+        "data": data,
     }
 
 
@@ -325,9 +327,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "params_change":
+                seq = data.get("seq", None)
                 state.params = CircleParams.from_dict(data.get("params", {}))
                 regenerate(state)
-                await websocket.send_json(_preview_payload(state))
+                extra = {"params_seq": seq} if seq is not None else {}
+                await websocket.send_json(_preview_payload(state, **extra))
 
             elif msg_type == "set_apex":
                 if not _set_manual_apex(state, data):

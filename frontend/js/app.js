@@ -135,6 +135,7 @@ const App = {
     _handleWsMessage(msg) {
         const data = msg.data || {};
         if (msg.type === "preview_update") {
+            if (data.stale_params_preview) return;
             const geometry = data.preview_geometry || {};
             svgViewer.setOverlay(geometry, data.show_generated);
 
