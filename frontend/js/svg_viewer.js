@@ -323,17 +323,11 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
-        const maxCapsuleStart = Math.max(0.1, Number(params.ray_offset || 0));
-        const capsuleStart = Math.max(
-            0.1,
-            Math.min(Number(params.capsule_start_distance || 0.1), maxCapsuleStart),
-        ) * svgScale;
         const source = basis.slice(0, rayCount);
         const allCircles = [];
         const rays = [];
-        const capsules = [];
 
-        for (const b of source) {
+        for (const [placementIndex, b] of source.entries()) {
             let nx = Number(b.nx || 0);
             let ny = Number(b.ny || 0);
             const mag = Math.hypot(nx, ny);
@@ -341,7 +335,6 @@ class SvgViewer {
             nx /= mag;
             ny /= mag;
             const rayEndDistance = offset + Math.max(0, circlesPerRay - 1) * spacing;
-            capsules.push(this._capsulePathFromRayBasis(b, nx, ny, capsuleStart, rayEndDistance, radius));
             rays.push({
                 x1: b.x,
                 y1: b.y,
@@ -354,17 +347,53 @@ class SvgViewer {
                     cx: b.x + nx * d,
                     cy: b.y + ny * d,
                     r: radius,
+                    placementIndex,
+                    circleIndex: i,
                 });
             }
         }
 
         const pruned = this._quickPruneOverlaps(allCircles, radius);
+        const capsules = this._capsulesFromKeptCircles(source, pruned.kept, radius);
         return {
             rays,
             capsules,
             circles: pruned.kept,
             removed_circles: pruned.removed,
         };
+    }
+
+    _capsulesFromKeptCircles(basis, keptCircles, radius) {
+        const groups = new Map();
+        for (const circle of keptCircles) {
+            if (!groups.has(circle.placementIndex)) groups.set(circle.placementIndex, []);
+            groups.get(circle.placementIndex).push(circle);
+        }
+
+        const capsules = [];
+        for (const [placementIndex, circles] of groups.entries()) {
+            if (!basis[placementIndex] || circles.length < 2) continue;
+            circles.sort((a, b) => a.circleIndex - b.circleIndex);
+            const near = circles[0];
+            const far = circles[circles.length - 1];
+            capsules.push(this._capsulePathFromCenters(near, far, radius));
+        }
+        return capsules;
+    }
+
+    _capsulePathFromCenters(near, far, radius) {
+        const dx = far.cx - near.cx;
+        const dy = far.cy - near.cy;
+        const length = Math.hypot(dx, dy);
+        if (length <= 1e-6) return null;
+        return this._capsulePathFromRayBasis(
+            { x: near.cx, y: near.cy },
+            dx / length,
+            dy / length,
+            0,
+            length,
+            radius,
+        );
     }
 
     _capsulePathFromRayBasis(base, nx, ny, nearDistance, farDistance, radius) {

@@ -630,6 +630,35 @@ def test_capsule_start_distance_is_clamped_to_first_circle():
     assert params.capsule_start_distance == 0.1
 
 
+def test_capsule_uses_nearest_kept_circle_when_inner_circle_removed():
+    placement = {
+        "point": Vec2(0, 0),
+        "normal": Vec2(0, 1),
+        "centers": [Vec2(0, 10), Vec2(0, 20), Vec2(0, 30)],
+    }
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=3,
+        circle_spacing=10.0,
+        ray_offset=10.0,
+        capsule_start_distance=10.0,
+    )
+    kept_items = [
+        {"circle_index": 1, "center": Vec2(0, 20)},
+        {"circle_index": 2, "center": Vec2(0, 30)},
+    ]
+
+    capsule = circle_generator._capsule_for_placement(
+        placement,
+        params,
+        kept_items=kept_items,
+    )
+
+    assert capsule is not None
+    assert capsule["near"].isclose(Vec2(0, 20))
+    assert capsule["far"].isclose(Vec2(0, 30))
+
+
 def test_open_chain_normals_do_not_flip_sides():
     doc = ezdxf.new("R2010")
     samples = [

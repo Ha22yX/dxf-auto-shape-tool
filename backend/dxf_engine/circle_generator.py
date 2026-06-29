@@ -288,20 +288,29 @@ def _distance_square(a: Vec2, b: Vec2):
     return delta.x * delta.x + delta.y * delta.y
 
 
-def _capsule_for_placement(placement, params):
+def _capsule_for_placement(placement, params, kept_items=None):
     if params.circle_radius <= 0 or params.circles_per_ray <= 0:
         return None
     normal = placement.get("normal", Vec2(0, 1))
     if normal.magnitude <= 1e-9:
         return None
     direction = normal.normalize()
-    max_start = max(0.1, params.ray_offset)
-    start_distance = max(0.1, min(getattr(params, "capsule_start_distance", 0.1), max_start))
-    near_center = placement["point"] + direction * start_distance
-    if placement["centers"]:
-        far_center = placement["centers"][-1]
+
+    if kept_items is not None:
+        if not kept_items:
+            return None
+        ordered = sorted(kept_items, key=lambda item: item["circle_index"])
+        near_center = ordered[0]["center"]
+        far_center = ordered[-1]["center"]
     else:
-        far_center = placement["point"] + direction * params.ray_offset
+        max_start = max(0.1, params.ray_offset)
+        start_distance = max(0.1, min(getattr(params, "capsule_start_distance", 0.1), max_start))
+        near_center = placement["point"] + direction * start_distance
+        if placement["centers"]:
+            far_center = placement["centers"][-1]
+        else:
+            far_center = placement["point"] + direction * params.ray_offset
+
     if (far_center - near_center).magnitude <= POINT_TOLERANCE:
         return None
     if (far_center - near_center).dot(direction) < 0:
@@ -483,6 +492,13 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
     return kept, removed
 
 
+def _items_by_placement(items):
+    by_placement = {}
+    for item in items:
+        by_placement.setdefault(item["placement_index"], []).append(item)
+    return by_placement
+
+
 def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
                              closed: bool, bounds: dict, scale: float,
                              manual_apex_distance=None) -> dict:
@@ -495,13 +511,14 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
     )
     kept_items, removed_items = _overlap_pruned_circle_items(doc, chain, params, placements)
+    kept_by_placement = _items_by_placement(kept_items)
 
     circles = []
     removed_circles = []
     rays = []
     basis = []
     capsules = []
-    for p in placements:
+    for placement_index, p in enumerate(placements):
         x, y = _to_svg(p["point"].x, p["point"].y, bounds, scale)
         basis.append({
             "x": x,
@@ -509,7 +526,11 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
             "nx": p["normal"].x * scale,
             "ny": -p["normal"].y * scale,
         })
-        capsule = _capsule_for_placement(p, params)
+        capsule = _capsule_for_placement(
+            p,
+            params,
+            kept_by_placement.get(placement_index, []),
+        )
         if capsule:
             capsules.append({"d": _capsule_svg_path(capsule, bounds, scale)})
     for item in kept_items:
@@ -601,6 +622,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     if not placements:
         return [], []
     kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)
+    kept_by_placement = _items_by_placement(kept_items)
 
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
@@ -616,8 +638,12 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
         )
         circle_handles.append(circle.dxf.handle)
 
-    for placement in placements:
-        capsule = _capsule_for_placement(placement, params)
+    for placement_index, placement in enumerate(placements):
+        capsule = _capsule_for_placement(
+            placement,
+            params,
+            kept_by_placement.get(placement_index, []),
+        )
         if capsule:
             _add_capsule_entities(msp, capsule)
 
