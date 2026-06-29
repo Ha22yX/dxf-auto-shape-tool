@@ -16,6 +16,8 @@ class SvgViewer {
         this.viewport = null;   // pan/zoom wrapper group
         this.overlay = null;    // generated circles / rays / selection highlight
         this.generatedLayer = null; // toggleable subgroup for circles + rays
+        this.hoverHitLayer = null;
+        this.hoverOwners = new Map();
 
         // View transform
         this.scale = 1;
@@ -80,12 +82,15 @@ class SvgViewer {
         generatedLayer.setAttribute("id", "generated-layer");
         overlay.appendChild(hoverPath);
         overlay.appendChild(generatedLayer);
+
+        const hitLayer = this._buildLocalHoverHitLayer(viewport);
         viewport.appendChild(overlay);
 
         this.viewport = viewport;
         this.overlay = overlay;
         this.hoverPath = hoverPath;
         this.generatedLayer = generatedLayer;
+        this.hoverHitLayer = hitLayer;
         this.lastHoverHandle = null;
         this.localHoverElement = null;
 
@@ -188,31 +193,40 @@ class SvgViewer {
             const ring = document.createElementNS(SVG_NS, "circle");
             ring.setAttribute("cx", snap.cx.toFixed(1));
             ring.setAttribute("cy", snap.cy.toFixed(1));
-            ring.setAttribute("r", snap.r.toFixed(1));
-            ring.setAttribute("fill", "rgba(255, 92, 92, 0.18)");
+            ring.setAttribute("r", Math.max(14, snap.r || 0).toFixed(1));
+            ring.setAttribute("fill", "rgba(255, 42, 42, 0.32)");
             ring.setAttribute("stroke", "#FF5C5C");
-            ring.setAttribute("stroke-width", "2.4");
+            ring.setAttribute("stroke-width", "3.4");
             ring.setAttribute("vector-effect", "non-scaling-stroke");
 
+            const dot = document.createElementNS(SVG_NS, "circle");
+            dot.setAttribute("cx", snap.cx.toFixed(1));
+            dot.setAttribute("cy", snap.cy.toFixed(1));
+            dot.setAttribute("r", "4.8");
+            dot.setAttribute("fill", "#FF2A2A");
+            dot.setAttribute("vector-effect", "non-scaling-stroke");
+
             const crossH = document.createElementNS(SVG_NS, "line");
-            crossH.setAttribute("x1", (snap.cx - snap.r - 4).toFixed(1));
+            const crossSize = Math.max(22, (snap.r || 0) + 10);
+            crossH.setAttribute("x1", (snap.cx - crossSize).toFixed(1));
             crossH.setAttribute("y1", snap.cy.toFixed(1));
-            crossH.setAttribute("x2", (snap.cx + snap.r + 4).toFixed(1));
+            crossH.setAttribute("x2", (snap.cx + crossSize).toFixed(1));
             crossH.setAttribute("y2", snap.cy.toFixed(1));
             crossH.setAttribute("stroke", "#FF5C5C");
-            crossH.setAttribute("stroke-width", "1.8");
+            crossH.setAttribute("stroke-width", "2.4");
             crossH.setAttribute("vector-effect", "non-scaling-stroke");
 
             const crossV = document.createElementNS(SVG_NS, "line");
             crossV.setAttribute("x1", snap.cx.toFixed(1));
-            crossV.setAttribute("y1", (snap.cy - snap.r - 4).toFixed(1));
+            crossV.setAttribute("y1", (snap.cy - crossSize).toFixed(1));
             crossV.setAttribute("x2", snap.cx.toFixed(1));
-            crossV.setAttribute("y2", (snap.cy + snap.r + 4).toFixed(1));
+            crossV.setAttribute("y2", (snap.cy + crossSize).toFixed(1));
             crossV.setAttribute("stroke", "#FF5C5C");
-            crossV.setAttribute("stroke-width", "1.8");
+            crossV.setAttribute("stroke-width", "2.4");
             crossV.setAttribute("vector-effect", "non-scaling-stroke");
 
             group.appendChild(ring);
+            group.appendChild(dot);
             group.appendChild(crossH);
             group.appendChild(crossV);
             this.overlay.insertBefore(group, this.generatedLayer);
@@ -302,14 +316,72 @@ class SvgViewer {
         }
     }
 
+    _buildLocalHoverHitLayer(viewport) {
+        this.hoverOwners = new Map();
+        const hitLayer = document.createElementNS(SVG_NS, "g");
+        hitLayer.setAttribute("id", "local-hover-hit-layer");
+
+        const cloneableTags = new Set(["path", "line", "polyline", "polygon", "circle", "ellipse", "rect"]);
+        const owners = Array.from(viewport.querySelectorAll("[data-handle]"));
+        for (const owner of owners) {
+            const handle = owner.getAttribute("data-handle");
+            if (!handle || this.hoverOwners.has(handle)) continue;
+            this.hoverOwners.set(handle, owner);
+
+            const candidates = [];
+            const ownerTag = owner.tagName.toLowerCase();
+            if (cloneableTags.has(ownerTag)) {
+                candidates.push(owner);
+            }
+            owner.querySelectorAll(Array.from(cloneableTags).join(",")).forEach((el) => {
+                candidates.push(el);
+            });
+
+            for (const source of candidates) {
+                const clone = source.cloneNode(false);
+                clone.removeAttribute("id");
+                clone.removeAttribute("class");
+                clone.setAttribute("data-hover-proxy", "true");
+                clone.setAttribute("data-handle", handle);
+                clone.setAttribute("fill", "none");
+                clone.setAttribute("stroke", "transparent");
+                clone.setAttribute("stroke-width", "18");
+                clone.setAttribute("stroke-linecap", "round");
+                clone.setAttribute("stroke-linejoin", "round");
+                clone.setAttribute("vector-effect", "non-scaling-stroke");
+                clone.setAttribute("pointer-events", "stroke");
+                clone.style.cursor = "pointer";
+                hitLayer.appendChild(clone);
+            }
+        }
+
+        viewport.appendChild(hitLayer);
+        return hitLayer;
+    }
+
     _localHoverTarget(e) {
+        const proxy = e.target && e.target.closest ? e.target.closest("[data-hover-proxy]") : null;
+        if (proxy && this.svg.contains(proxy)) {
+            return this.hoverOwners.get(proxy.getAttribute("data-handle")) || null;
+        }
+
         const direct = e.target && e.target.closest ? e.target.closest("[data-handle]") : null;
-        if (direct && this.svg.contains(direct)) return direct;
+        if (direct && this.svg.contains(direct)) {
+            const handle = direct.getAttribute("data-handle");
+            return this.hoverOwners.get(handle) || direct;
+        }
 
         for (const element of document.elementsFromPoint(e.clientX, e.clientY)) {
             if (!this.svg.contains(element) || !element.closest) continue;
+            const proxyCandidate = element.closest("[data-hover-proxy]");
+            if (proxyCandidate && this.svg.contains(proxyCandidate)) {
+                return this.hoverOwners.get(proxyCandidate.getAttribute("data-handle")) || null;
+            }
             const candidate = element.closest("[data-handle]");
-            if (candidate && this.svg.contains(candidate)) return candidate;
+            if (candidate && this.svg.contains(candidate)) {
+                const handle = candidate.getAttribute("data-handle");
+                return this.hoverOwners.get(handle) || candidate;
+            }
         }
         return null;
     }
@@ -479,7 +551,7 @@ class SvgViewer {
         }
         const client = this.svgPointToClient(this.symmetrySnapPoint.cx, this.symmetrySnapPoint.cy);
         const distance = Math.hypot(client.x - e.clientX, client.y - e.clientY);
-        this._setSnapPreviewActive(distance <= 24);
+        this._setSnapPreviewActive(distance <= 42);
     }
 }
 

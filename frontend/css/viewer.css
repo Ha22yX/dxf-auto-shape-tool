@@ -46,6 +46,11 @@
     pointer-events: none;
 }
 
+#local-hover-hit-layer [data-hover-proxy] {
+    opacity: 0;
+    pointer-events: stroke;
+}
+
 #symmetry-axis-line {
     display: none;
 }
@@ -56,11 +61,23 @@
 
 #symmetry-snap-marker {
     display: none;
-    filter: drop-shadow(0 0 5px rgba(255, 92, 92, 0.95));
+    opacity: 0.78;
+    filter: drop-shadow(0 0 7px rgba(255, 42, 42, 0.9));
+}
+
+.svg-container.is-picking-apex #symmetry-snap-marker {
+    display: block;
 }
 
 .svg-container.is-picking-apex #symmetry-snap-marker.is-active {
     display: block;
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(255, 42, 42, 1));
+}
+
+.svg-container.is-picking-apex #symmetry-snap-marker.is-active circle:first-child {
+    fill: rgba(255, 42, 42, 0.46);
+    stroke-width: 4.4;
 }
 
 #dxf-content [data-handle].local-hover-highlight,
@@ -68,7 +85,7 @@
 .local-hover-highlight {
     stroke: #FFD166 !important;
     stroke-opacity: 1 !important;
-    filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.9));
+    filter: drop-shadow(0 0 5px rgba(255, 209, 102, 0.95));
 }
 
 #manual-apex-marker {
