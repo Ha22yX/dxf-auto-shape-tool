@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260629-base-stroke-fix">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-base-stroke-fix">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260629-param-sections">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-param-sections">
 </head>
 <body>
     <div class="app">
@@ -35,6 +35,9 @@
             <aside class="panel-section">
                 <div class="panel-card">
                     <h2>参数设置</h2>
+
+                    <section class="param-section">
+                        <h3>圆圈</h3>
 
                     <div class="form-group slider-group" data-param="circle_radius">
                         <div class="slider-header">
@@ -69,6 +72,11 @@
                         <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
                     </div>
 
+                    </section>
+
+                    <section class="param-section">
+                        <h3>射线</h3>
+
                     <div class="form-group slider-group" data-param="ray_offset">
                         <div class="slider-header">
                             <label>射线整体偏移</label>
@@ -80,6 +88,33 @@
                         <input type="range" id="param-ray-offset-slider" min="-500" max="500" step="0.5" value="75">
                         <div class="slider-hints"><span>-500</span><span>0</span><span>500</span></div>
                     </div>
+
+                    <div class="form-group slider-group" data-param="ray_count">
+                        <div class="slider-header">
+                            <label>射线数量</label>
+                            <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
+                        </div>
+                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
+                        <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="param-ray-direction">射线方向</label>
+                        <select id="param-ray-direction">
+                            <option value="inward">向内</option>
+                            <option value="outward" selected>向外</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label for="param-dedupe-closed-rays">闭合端点射线去重</label>
+                        <input type="checkbox" id="param-dedupe-closed-rays" checked>
+                    </div>
+
+                    </section>
+
+                    <section class="param-section">
+                        <h3>长条与间隔</h3>
 
                     <div class="form-group slider-group" data-param="capsule_start_distance">
                         <div class="slider-header">
@@ -129,32 +164,18 @@
                         <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
                     </div>
 
-                    <div class="form-group slider-group" data-param="ray_count">
-                        <div class="slider-header">
-                            <label>射线数量</label>
-                            <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
-                        </div>
-                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
-                        <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
-                    </div>
+                    </section>
 
-                    <div class="form-group">
-                        <label for="param-ray-direction">射线方向</label>
-                        <select id="param-ray-direction">
-                            <option value="inward">向内</option>
-                            <option value="outward" selected>向外</option>
-                        </select>
-                    </div>
+                    <section class="param-section">
+                        <h3>显示</h3>
 
                     <div class="form-group toggle-group">
                         <label for="toggle-preview">显示生成图</label>
                         <input type="checkbox" id="toggle-preview" checked>
                     </div>
 
-                    <div class="form-group toggle-group">
-                        <label for="param-dedupe-closed-rays">闭合端点射线去重</label>
-                        <input type="checkbox" id="param-dedupe-closed-rays" checked>
-                    </div>
+                    </section>
+
                 </div>
 
                 <div class="panel-card actions-card">
@@ -175,11 +196,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260629-base-stroke-fix"></script>
-    <script src="/static/js/websocket.js?v=20260629-base-stroke-fix"></script>
-    <script src="/static/js/svg_viewer.js?v=20260629-base-stroke-fix"></script>
-    <script src="/static/js/selector.js?v=20260629-base-stroke-fix"></script>
-    <script src="/static/js/parameter_panel.js?v=20260629-base-stroke-fix"></script>
-    <script src="/static/js/app.js?v=20260629-base-stroke-fix"></script>
+    <script src="/static/js/api.js?v=20260629-param-sections"></script>
+    <script src="/static/js/websocket.js?v=20260629-param-sections"></script>
+    <script src="/static/js/svg_viewer.js?v=20260629-param-sections"></script>
+    <script src="/static/js/selector.js?v=20260629-param-sections"></script>
+    <script src="/static/js/parameter_panel.js?v=20260629-param-sections"></script>
+    <script src="/static/js/app.js?v=20260629-param-sections"></script>
 </body>
 </html>

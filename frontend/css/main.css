@@ -72,6 +72,27 @@ body {
     color: #fff;
 }
 
+.param-section {
+    border: 1px solid #343434;
+    border-radius: 6px;
+    background: #202020;
+    padding: 12px 12px 4px;
+    margin-bottom: 12px;
+}
+
+.param-section h3 {
+    margin: -2px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #303030;
+    color: #d8d8d8;
+    font-size: 12px;
+    letter-spacing: 0;
+}
+
+.param-section .form-group:last-child {
+    margin-bottom: 8px;
+}
+
 .form-group {
     margin-bottom: 14px;
 }
