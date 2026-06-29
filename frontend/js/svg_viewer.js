@@ -23,6 +23,8 @@ class SvgViewer {
         this.lastShowGenerated = true;
         this.currentPreviewParams = null;
         this.capsuleGapGuideVisible = false;
+        this._renderFrame = null;
+        this._pendingGeneratedRender = null;
 
         // View transform
         this.scale = 1;
@@ -121,7 +123,7 @@ class SvgViewer {
         this.lastGeometry = geometry;
         this.lastShowGenerated = showGenerated;
 
-        this._renderGeneratedGeometry(geometry, showGenerated);
+        this._renderGeneratedGeometry(geometry, showGenerated, true);
         this._renderStaticOverlay(geometry);
     }
 
@@ -140,66 +142,76 @@ class SvgViewer {
         return true;
     }
 
-    _renderGeneratedGeometry(geometry, showGenerated) {
+    _renderGeneratedGeometry(geometry, showGenerated, immediate = false) {
         if (!this.generatedLayer) return;
-        this.generatedLayer.innerHTML = "";
+        this._pendingGeneratedRender = { geometry: geometry || {}, showGenerated };
+        if (immediate) {
+            this._flushGeneratedGeometry();
+            return;
+        }
+        if (this._renderFrame) return;
+        this._renderFrame = window.requestAnimationFrame(() => {
+            this._renderFrame = null;
+            this._flushGeneratedGeometry();
+        });
+    }
+
+    _flushGeneratedGeometry() {
+        if (!this.generatedLayer || !this._pendingGeneratedRender) return;
+        const { geometry, showGenerated } = this._pendingGeneratedRender;
+        this._pendingGeneratedRender = null;
         this.generatedLayer.style.display = showGenerated ? "" : "none";
+        this.generatedLayer.innerHTML = this._generatedGeometryMarkup(geometry);
+    }
+
+    _generatedGeometryMarkup(geometry) {
+        const parts = [];
         const capsules = geometry.capsules || [];
         for (const c of capsules) {
             if (!c || !c.d) continue;
-            const path = document.createElementNS(SVG_NS, "path");
-            path.setAttribute("d", c.d);
-            path.setAttribute("fill", "none");
-            path.setAttribute("stroke", "#E8E8E8");
-            path.setAttribute("stroke-width", "1.4");
-            path.setAttribute("stroke-opacity", "0.92");
-            path.setAttribute("stroke-linecap", "round");
-            path.setAttribute("stroke-linejoin", "round");
-            path.setAttribute("vector-effect", "non-scaling-stroke");
-            this.generatedLayer.appendChild(path);
+            parts.push(
+                `<path d="${this._escapeAttr(c.d)}" fill="none" stroke="#E8E8E8" `
+                + `stroke-width="1.4" stroke-opacity="0.92" stroke-linecap="round" `
+                + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
+            );
         }
         const rays = geometry.rays || [];
         for (const r of rays) {
-            const line = document.createElementNS(SVG_NS, "line");
-            line.setAttribute("x1", r.x1.toFixed(1));
-            line.setAttribute("y1", r.y1.toFixed(1));
-            line.setAttribute("x2", r.x2.toFixed(1));
-            line.setAttribute("y2", r.y2.toFixed(1));
-            line.setAttribute("stroke", "#B8B8B8");
-            line.setAttribute("stroke-width", "1.2");
-            line.setAttribute("stroke-opacity", "0.45");
-            line.setAttribute("stroke-dasharray", "6 6");
-            line.setAttribute("vector-effect", "non-scaling-stroke");
-            this.generatedLayer.appendChild(line);
+            parts.push(
+                `<line x1="${this._fmt(r.x1)}" y1="${this._fmt(r.y1)}" `
+                + `x2="${this._fmt(r.x2)}" y2="${this._fmt(r.y2)}" stroke="#B8B8B8" `
+                + `stroke-width="1.2" stroke-opacity="0.45" stroke-dasharray="6 6" `
+                + `vector-effect="non-scaling-stroke"></line>`,
+            );
         }
 
         const removedCircles = geometry.removed_circles || [];
         for (const c of removedCircles) {
-            const circle = document.createElementNS(SVG_NS, "circle");
-            circle.setAttribute("cx", c.cx.toFixed(1));
-            circle.setAttribute("cy", c.cy.toFixed(1));
-            circle.setAttribute("r", c.r.toFixed(1));
-            circle.setAttribute("fill", "rgba(160, 160, 160, 0.14)");
-            circle.setAttribute("stroke", "#9A9A9A");
-            circle.setAttribute("stroke-width", "1.6");
-            circle.setAttribute("stroke-opacity", "0.48");
-            circle.setAttribute("stroke-dasharray", "4 4");
-            circle.setAttribute("vector-effect", "non-scaling-stroke");
-            this.generatedLayer.appendChild(circle);
+            parts.push(
+                `<circle cx="${this._fmt(c.cx)}" cy="${this._fmt(c.cy)}" r="${this._fmt(c.r)}" `
+                + `fill="rgba(160, 160, 160, 0.14)" stroke="#9A9A9A" `
+                + `stroke-width="1.6" stroke-opacity="0.48" stroke-dasharray="4 4" `
+                + `vector-effect="non-scaling-stroke"></circle>`,
+            );
         }
 
         const circles = geometry.circles || [];
         for (const c of circles) {
-            const circle = document.createElementNS(SVG_NS, "circle");
-            circle.setAttribute("cx", c.cx.toFixed(1));
-            circle.setAttribute("cy", c.cy.toFixed(1));
-            circle.setAttribute("r", c.r.toFixed(1));
-            circle.setAttribute("fill", "none");
-            circle.setAttribute("stroke", "#FF6B6B");
-            circle.setAttribute("stroke-width", "1.8");
-            circle.setAttribute("vector-effect", "non-scaling-stroke");
-            this.generatedLayer.appendChild(circle);
+            parts.push(
+                `<circle cx="${this._fmt(c.cx)}" cy="${this._fmt(c.cy)}" r="${this._fmt(c.r)}" `
+                + `fill="none" stroke="#FF6B6B" stroke-width="1.8" `
+                + `vector-effect="non-scaling-stroke"></circle>`,
+            );
         }
+        return parts.join("");
+    }
+
+    _fmt(value) {
+        return Number(value || 0).toFixed(1);
+    }
+
+    _escapeAttr(value) {
+        return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
     }
 
     _renderStaticOverlay(geometry) {
@@ -351,7 +363,7 @@ class SvgViewer {
             0.1,
             Math.min(Number(params.capsule_start_distance || 0.1), maxCapsuleStart),
         ) * svgScale;
-        const source = basis.slice(0, rayCount);
+        const source = this._resampleBasis(basis, rayCount);
         const allCircles = [];
         const rays = [];
 
@@ -409,6 +421,38 @@ class SvgViewer {
             circles: pruned.kept,
             removed_circles: pruned.removed,
         };
+    }
+
+    _resampleBasis(basis, count) {
+        if (count <= 0 || !basis.length) return [];
+        if (count === basis.length) return basis.slice();
+        if (count === 1) {
+            return [basis[Math.floor((basis.length - 1) / 2)]];
+        }
+        const result = [];
+        const maxSource = basis.length - 1;
+        for (let i = 0; i < count; i++) {
+            const t = maxSource * i / (count - 1);
+            const left = Math.floor(t);
+            const right = Math.min(maxSource, left + 1);
+            const f = t - left;
+            const a = basis[left];
+            const b = basis[right];
+            let nx = Number(a.nx || 0) * (1 - f) + Number(b.nx || 0) * f;
+            let ny = Number(a.ny || 0) * (1 - f) + Number(b.ny || 0) * f;
+            const mag = Math.hypot(nx, ny);
+            if (mag > 1e-9) {
+                nx /= mag;
+                ny /= mag;
+            }
+            result.push({
+                x: Number(a.x || 0) * (1 - f) + Number(b.x || 0) * f,
+                y: Number(a.y || 0) * (1 - f) + Number(b.y || 0) * f,
+                nx,
+                ny,
+            });
+        }
+        return result;
     }
 
     _capsulesFromKeptCircles(

@@ -340,7 +340,7 @@ class ParameterPanel {
             clearTimeout(this._debounceTimer);
             this._debounceTimer = setTimeout(() => {
                 if (this.onParamsChange) this.onParamsChange(this.getParams());
-            }, 260);
+            }, 900);
         };
 
         for (const key of this.keys) {
