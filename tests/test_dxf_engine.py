@@ -314,6 +314,23 @@ def test_symmetry_axis_default_uses_topmost_crossing():
     assert (sample.point - Vec2(10, 20)).magnitude < 0.2
 
 
+def test_axis_crossing_point_is_projected_onto_axis():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    line = msp.add_line((0, 0), (20, 10))
+    axis = {
+        "center": Vec2(10, 0),
+        "direction": Vec2(0, 1),
+        "normal": Vec2(1, 0),
+    }
+
+    sample = geometry_utils.top_axis_sample_on_chain(doc, [line.dxf.handle], axis)
+
+    assert sample is not None
+    assert abs(sample.point.x - axis["center"].x) < 1e-9
+    assert abs(sample.point.y - 5) < 1e-6
+
+
 def test_selection_sets_default_apex_to_top_axis_crossing():
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()

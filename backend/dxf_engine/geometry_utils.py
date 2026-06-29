@@ -591,10 +591,86 @@ def estimate_chain_symmetry_axis(doc, chain: List[str], sample_count: Optional[i
     }
 
 
+def _axis_crossings_on_chain(doc, chain: List[str], axis):
+    segments = _build_segments(doc, chain)
+    if not segments or not axis:
+        return []
+
+    cum_lengths = _cumulative_lengths(segments)
+    total = cum_lengths[-1]
+    axis_x = axis["center"].x
+    crossings = []
+
+    def add_crossing(seg, seg_index, t):
+        t = max(0.0, min(1.0, t))
+        point, tangent, normal = seg.evaluate(t)
+        distance = cum_lengths[seg_index] + seg.length * t
+        crossings.append(SamplePoint(
+            point=Vec2(axis_x, point.y),
+            tangent=tangent,
+            normal=normal,
+            handle=seg.handle,
+            segment_index=seg.segment_index,
+            t=t,
+            distance=max(0.0, min(total, distance)),
+        ))
+
+    for seg_index, seg in enumerate(segments):
+        p0, _, _ = seg.evaluate(0.0)
+        p1, _, _ = seg.evaluate(1.0)
+        d0 = p0.x - axis_x
+        d1 = p1.x - axis_x
+
+        if abs(d0) <= POINT_TOLERANCE and abs(d1) <= POINT_TOLERANCE:
+            add_crossing(seg, seg_index, 0.0)
+            add_crossing(seg, seg_index, 1.0)
+            continue
+
+        if abs(d0) <= POINT_TOLERANCE:
+            add_crossing(seg, seg_index, 0.0)
+            continue
+        if abs(d1) <= POINT_TOLERANCE:
+            add_crossing(seg, seg_index, 1.0)
+            continue
+        if d0 * d1 > 0:
+            continue
+
+        lo = 0.0
+        hi = 1.0
+        lo_d = d0
+        for _ in range(48):
+            mid = (lo + hi) / 2.0
+            mid_point, _, _ = seg.evaluate(mid)
+            mid_d = mid_point.x - axis_x
+            if abs(mid_d) <= POINT_TOLERANCE:
+                lo = hi = mid
+                break
+            if lo_d * mid_d <= 0:
+                hi = mid
+            else:
+                lo = mid
+                lo_d = mid_d
+        add_crossing(seg, seg_index, (lo + hi) / 2.0)
+
+    unique = []
+    seen = set()
+    for crossing in crossings:
+        key = (round(crossing.distance / POINT_TOLERANCE), round(crossing.point.y / POINT_TOLERANCE))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(crossing)
+    return unique
+
+
 def top_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):
     total = chain_length(doc, chain)
     if total <= 1e-9 or not axis:
         return None
+    crossings = _axis_crossings_on_chain(doc, chain, axis)
+    if crossings:
+        return max(crossings, key=lambda sample: sample.point.y)
+
     if sample_count is None:
         sample_count = max(257, min(5001, int(total / 2.0)))
         if sample_count % 2 == 0:
