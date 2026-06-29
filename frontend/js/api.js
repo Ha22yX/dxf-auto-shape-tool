@@ -52,6 +52,30 @@ const API = {
         return res.json();
     },
 
+    async updateParams(sessionId, params) {
+        const res = await fetch(`${this.baseUrl}/api/session/${sessionId}/params`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(params),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "参数同步失败");
+        }
+        return res.json();
+    },
+
+    async download(sessionId) {
+        const res = await fetch(this.downloadUrl(sessionId), {
+            cache: "no-store",
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "下载失败");
+        }
+        return res.blob();
+    },
+
     downloadUrl(sessionId) {
         return `${this.baseUrl}/api/session/${sessionId}/download`;
     },

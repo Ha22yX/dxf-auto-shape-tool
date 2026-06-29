@@ -6,6 +6,8 @@ import os
 import uuid
 import asyncio
 import time
+import io
+from urllib.parse import quote
 
 from backend.config import BASE_DIR, TEMP_DIR, GENERATED_LAYER
 from backend.state import (
@@ -215,7 +217,7 @@ async def toggle_preview(session_id: str, data: dict):
 
 @app.get("/api/session/{session_id}/download")
 async def download_dxf(session_id: str):
-    """The ONLY place where the DXF is mutated: clone original, add circles, save."""
+    """The ONLY place where the DXF is mutated: clone original, add circles, stream."""
     state = get_session(session_id)
     if not state:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -236,13 +238,18 @@ async def download_dxf(session_id: str):
         except Exception as e:
             print(f"生成圆失败: {e}")
 
-    temp_path = TEMP_DIR / f"{session_id}_download.dxf"
-    loader.save_dxf(output_doc, str(temp_path))
-
-    return FileResponse(
-        str(temp_path),
-        filename=f"generated_{session_id[:8]}.dxf",
+    stream = io.StringIO()
+    output_doc.write(stream)
+    filename = f"generated_{session_id[:8]}.dxf"
+    return Response(
+        content=stream.getvalue().encode("utf-8", errors="replace"),
         media_type="application/dxf",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename={filename}; filename*=UTF-8''{quote(filename)}"
+            ),
+            "Cache-Control": "no-store, max-age=0",
+        },
     )
 
 

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ezdxf
 from ezdxf.math import Vec2
 from fastapi import UploadFile
-from backend.app import upload_dxf, _apply_selection
+from backend.app import upload_dxf, download_dxf, _apply_selection
 from backend.config import DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
@@ -45,6 +45,23 @@ def test_upload_returns_default_params():
     response = asyncio.run(upload_dxf(upload))
 
     assert response["params"] == DEFAULT_PARAMS
+
+
+def test_download_streams_dxf_without_temp_file_dependency():
+    doc = make_rect_doc()
+    stream = StringIO()
+    doc.write(stream)
+    upload = UploadFile(
+        filename="download-test.dxf",
+        file=BytesIO(stream.getvalue().encode("utf-8")),
+    )
+
+    upload_response = asyncio.run(upload_dxf(upload))
+    response = asyncio.run(download_dxf(upload_response["session_id"]))
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert b"SECTION" in response.body
 
 
 def test_path_analyzer_chain():

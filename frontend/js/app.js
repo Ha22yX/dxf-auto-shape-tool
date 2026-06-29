@@ -105,14 +105,32 @@ const App = {
     },
 
     _bindActions() {
-        document.getElementById("save-btn").addEventListener("click", () => {
+        document.getElementById("save-btn").addEventListener("click", async () => {
             if (!this.sessionId) return;
-            const a = document.createElement("a");
-            a.href = API.downloadUrl(this.sessionId);
-            a.download = `generated_${this.sessionId.slice(0, 8)}.dxf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const saveBtn = document.getElementById("save-btn");
+            try {
+                saveBtn.disabled = true;
+                const synced = await API.updateParams(this.sessionId, parameterPanel.getParams());
+                if (synced.preview_geometry) {
+                    svgViewer.setOverlay(synced.preview_geometry, parameterPanel.getShowGenerated());
+                    if (synced.chain_info) {
+                        this._updateStatus({ chain_info: synced.chain_info });
+                    }
+                }
+                const blob = await API.download(this.sessionId);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `generated_${this.sessionId.slice(0, 8)}.dxf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                this._showError(err.message || "下载失败");
+            } finally {
+                saveBtn.disabled = false;
+            }
         });
 
         document

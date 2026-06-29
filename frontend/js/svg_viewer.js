@@ -340,9 +340,9 @@ class SvgViewer {
     }
 
     _geometryFromBasis(baseGeometry, params) {
-        const basis = baseGeometry.basis || [];
         const svgScale = Number(baseGeometry.scale || this.baseScale || 1);
-        const rayCount = Math.max(0, Math.min(basis.length, Number(params.ray_count || basis.length)));
+        const basis = this._basisWithApproxTopGap(baseGeometry.basis || [], params, baseGeometry, svgScale);
+        const rayCount = Math.max(0, Math.floor(Number(params.ray_count || basis.length)));
         const circlesPerRay = Math.max(0, Math.floor(Number(params.circles_per_ray || 0)));
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
@@ -421,6 +421,16 @@ class SvgViewer {
             circles: pruned.kept,
             removed_circles: pruned.removed,
         };
+    }
+
+    _basisWithApproxTopGap(basis, params, baseGeometry, svgScale) {
+        const gap = Math.max(0, Number(params.top_gap_distance || 0)) * svgScale;
+        const marker = baseGeometry.apex_marker;
+        if (!basis.length || gap <= 0 || !marker) return basis;
+        const cx = Number(marker.cx);
+        const cy = Number(marker.cy);
+        const filtered = basis.filter((b) => Math.hypot(Number(b.x || 0) - cx, Number(b.y || 0) - cy) >= gap);
+        return filtered.length ? filtered : [];
     }
 
     _resampleBasis(basis, count) {

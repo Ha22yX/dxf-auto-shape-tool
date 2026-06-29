@@ -334,23 +334,25 @@ class ParameterPanel {
     }
 
     _bindEvents() {
-        const triggerChange = () => {
+        const topologyKeys = new Set(["top_gap_distance", "ray_count", "ray_direction", "dedupe_closed_rays"]);
+        const triggerChange = (key = null) => {
             if (this.onParamsPreview) this.onParamsPreview(this.getParams());
             this._refreshActiveGuide();
             clearTimeout(this._debounceTimer);
+            const delay = topologyKeys.has(key) ? 80 : 900;
             this._debounceTimer = setTimeout(() => {
                 if (this.onParamsChange) this.onParamsChange(this.getParams());
-            }, 900);
+            }, delay);
         };
 
         for (const key of this.keys) {
             this.inputs[key].addEventListener("input", () => {
                 this._sync(key, "input");
-                triggerChange();
+                triggerChange(key);
             });
             this.inputs[key].addEventListener("change", () => {
                 this._commitInput(key);
-                triggerChange();
+                triggerChange(key);
             });
             this.inputs[key].addEventListener("blur", () => {
                 this._commitInput(key);
@@ -358,12 +360,12 @@ class ParameterPanel {
             this.inputs[key].addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
                     this._commitInput(key);
-                    triggerChange();
+                    triggerChange(key);
                 }
             });
             this.sliders[key].addEventListener("input", () => {
                 this._sync(key, "slider");
-                triggerChange();
+                triggerChange(key);
             });
 
             if (
@@ -375,11 +377,11 @@ class ParameterPanel {
         }
 
         if (this.rayDirection) {
-            this.rayDirection.addEventListener("change", triggerChange);
+            this.rayDirection.addEventListener("change", () => triggerChange("ray_direction"));
         }
 
         if (this.dedupeClosedRays) {
-            this.dedupeClosedRays.addEventListener("change", triggerChange);
+            this.dedupeClosedRays.addEventListener("change", () => triggerChange("dedupe_closed_rays"));
         }
 
         if (this.togglePreview) {
