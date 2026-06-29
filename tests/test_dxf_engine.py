@@ -1,10 +1,12 @@
 import os
 import sys
 import math
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import ezdxf
+from ezdxf.math import Vec2
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator
 from backend.state import SessionState, CircleParams
 
@@ -193,6 +195,59 @@ def test_closed_chain_endpoint_rays_can_be_deduped():
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
     assert len(placements) == 5
     assert (placements[0]["point"] - placements[-1]["point"]).magnitude < 1e-6
+
+
+def test_preview_rays_start_on_selected_edge():
+    doc = make_rect_doc()
+    handle = next(e.dxf.handle for e in doc.modelspace())
+    bounds = {"min": [0, 0], "max": [100, 80]}
+    scale = 1.0
+    params = CircleParams(
+        circle_radius=1.0,
+        circles_per_ray=1,
+        circle_spacing=5.0,
+        ray_offset=10.0,
+        ray_count=1,
+        ray_direction="outward",
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc, [handle], params, closed=False, bounds=bounds, scale=scale
+    )
+
+    ray = preview["rays"][0]
+    circle = preview["circles"][0]
+    assert ray["x1"] == 0
+    assert ray["y1"] == 80
+    assert (ray["x1"], ray["y1"]) != (circle["cx"], circle["cy"])
+
+
+def test_open_chain_normals_do_not_flip_sides():
+    doc = ezdxf.new("R2010")
+    samples = [
+        SimpleNamespace(normal=Vec2(0, 1)),
+        SimpleNamespace(normal=Vec2(0, -1)),
+        SimpleNamespace(normal=Vec2(0, 1)),
+    ]
+    params = CircleParams(ray_direction="inward")
+
+    normals = circle_generator._oriented_normals(doc, [], samples, params, closed=False)
+
+    for previous, current in zip(normals, normals[1:]):
+        assert previous.x * current.x + previous.y * current.y >= 0
+
+
+def test_closed_dedupe_removes_duplicate_source_points():
+    placements = [
+        {"point": Vec2(0, 0), "centers": [Vec2(0, 1)]},
+        {"point": Vec2(10, 0), "centers": [Vec2(10, 1)]},
+        {"point": Vec2(0, 0), "centers": [Vec2(0, -1)]},
+    ]
+
+    unique = circle_generator._dedupe_placements_by_source(placements)
+
+    assert len(unique) == 2
+    assert unique[0]["centers"] == [Vec2(0, 1)]
 
 
 def test_path_analyzer_with_polyline_bulge():

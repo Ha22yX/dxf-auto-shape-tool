@@ -10,8 +10,43 @@ import ezdxf
 from ezdxf.math import Vec2
 
 from backend.state import CircleParams
-from backend.config import GENERATED_LAYER
+from backend.config import GENERATED_LAYER, POINT_TOLERANCE
 from backend.dxf_engine import geometry_utils as geom
+
+
+def _keep_normal_continuity(normals):
+    """Prevent isolated tangent reversals from sending rays to the other side."""
+    continuous = []
+    previous = None
+    for normal in normals:
+        current = normal
+        if previous is not None:
+            dot = current.x * previous.x + current.y * previous.y
+            if dot < 0:
+                current = -current
+        continuous.append(current)
+        if current.magnitude > 1e-9:
+            previous = current
+    return continuous
+
+
+def _point_key(point):
+    return (
+        round(point.x / POINT_TOLERANCE),
+        round(point.y / POINT_TOLERANCE),
+    )
+
+
+def _dedupe_placements_by_source(placements):
+    seen = set()
+    unique = []
+    for placement in placements:
+        key = _point_key(placement["point"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(placement)
+    return unique
 
 
 def _oriented_normals(doc, chain, samples, params, closed):
@@ -35,7 +70,7 @@ def _oriented_normals(doc, chain, samples, params, closed):
     else:  # outward
         if not is_single_arc:
             oriented_normals = [-n for n in oriented_normals]
-    return oriented_normals
+    return _keep_normal_continuity(oriented_normals)
 
 
 def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool = False):
@@ -69,6 +104,8 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
             "ray_end": ray_end,
             "centers": centers,
         })
+    if closed and params.dedupe_closed_rays:
+        placements = _dedupe_placements_by_source(placements)
     return placements
 
 
@@ -91,7 +128,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
                 "cy": cy,
                 "r": params.circle_radius * scale,
             })
-        x1, y1 = _to_svg(p["ray_start"].x, p["ray_start"].y, bounds, scale)
+        x1, y1 = _to_svg(p["point"].x, p["point"].y, bounds, scale)
         x2, y2 = _to_svg(p["ray_end"].x, p["ray_end"].y, bounds, scale)
         rays.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
 
