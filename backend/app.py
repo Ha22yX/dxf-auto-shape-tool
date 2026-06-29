@@ -2,7 +2,6 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
-from ezdxf.math import Vec2
 import os
 import uuid
 import asyncio
@@ -157,31 +156,6 @@ def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -
     return True
 
 
-def _set_manual_apex(state: SessionState, data: dict) -> bool:
-    if not state.selected_chain:
-        return False
-    svg_x = float(data.get("svg_x", 0))
-    svg_y = float(data.get("svg_y", 0))
-    wcs_x, wcs_y = svg_exporter.svg_to_wcs(
-        svg_x, svg_y, state.svg_bounds, state.svg_scale
-    )
-    tol = data.get("tol", None)
-    try:
-        tol = float(tol) if tol is not None else None
-    except (TypeError, ValueError):
-        tol = None
-    sample = geometry_utils.snapped_apex_sample_on_chain(
-        state.working_doc,
-        state.selected_chain,
-        Vec2(wcs_x, wcs_y),
-        snap_tolerance=tol,
-    )
-    if sample is None:
-        return False
-    state.manual_apex_distance = sample.distance
-    return True
-
-
 def regenerate(state: SessionState):
     """Recompute the lightweight overlay geometry (no DXF mutation)."""
     closed = state.chain_info.get("is_closed", False)
@@ -333,15 +307,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 extra = {"params_seq": seq} if seq is not None else {}
                 await websocket.send_json(_preview_payload(state, **extra))
 
-            elif msg_type == "set_apex":
-                if not _set_manual_apex(state, data):
-                    await websocket.send_json({
-                        "type": "error",
-                        "data": {"message": "请先选中一条边线，再在线上选择顶点"},
-                    })
-                    continue
-                regenerate(state)
-                await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "toggle_preview":
                 state.show_generated = bool(data.get("show_generated", True))

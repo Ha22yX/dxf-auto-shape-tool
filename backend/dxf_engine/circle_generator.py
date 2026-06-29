@@ -145,13 +145,40 @@ def _manual_apex_marker(doc, chain, manual_apex_distance):
     return _apex_sample(doc, chain, total, manual_apex_distance=manual_apex_distance)
 
 
-def _symmetry_axis_overlay(doc, chain, bounds, scale):
+def _symmetry_axes_overlay(doc, chain, bounds, scale):
     axis = geom.estimate_chain_symmetry_axis(doc, chain)
     if not axis:
         return None
-    x1, y1 = _to_svg(axis["start"].x, axis["start"].y, bounds, scale)
-    x2, y2 = _to_svg(axis["end"].x, axis["end"].y, bounds, scale)
-    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+    points = axis.get("points") or []
+    if points:
+        min_x = min(point.x for point in points)
+        max_x = max(point.x for point in points)
+        min_y = min(point.y for point in points)
+        max_y = max(point.y for point in points)
+    else:
+        min_x = axis["start"].x
+        max_x = axis["end"].x
+        min_y = min(axis["start"].y, axis["end"].y)
+        max_y = max(axis["start"].y, axis["end"].y)
+
+    width = max_x - min_x
+    height = max_y - min_y
+    margin = max(height * 0.35, width * 0.25, 1.0)
+    center = axis["center"]
+
+    vx1, vy1 = _to_svg(center.x, min_y - margin, bounds, scale)
+    vx2, vy2 = _to_svg(center.x, max_y + margin, bounds, scale)
+    hx1, hy1 = _to_svg(min_x - margin, center.y, bounds, scale)
+    hx2, hy2 = _to_svg(max_x + margin, center.y, bounds, scale)
+    return {
+        "vertical": {"x1": vx1, "y1": vy1, "x2": vx2, "y2": vy2},
+        "horizontal": {"x1": hx1, "y1": hy1, "x2": hx2, "y2": hy2},
+    }
+
+
+def _symmetry_axis_overlay(doc, chain, bounds, scale):
+    axes = _symmetry_axes_overlay(doc, chain, bounds, scale)
+    return axes["vertical"] if axes else None
 
 
 def _symmetry_snap_point_overlay(doc, chain, bounds, scale):
@@ -597,6 +624,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "selected_chain_path": chain_path,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
+        "symmetry_axes": _symmetry_axes_overlay(doc, chain, bounds, scale),
         "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
         "removed_count": len(removed_circles),

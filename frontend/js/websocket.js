@@ -103,10 +103,6 @@ class WSClient {
         this._pendingParams = null;
     }
 
-    sendApex(svgX, svgY, tol) {
-        this.send("set_apex", { svg_x: svgX, svg_y: svgY, tol });
-    }
-
     sendToggle(showGenerated) {
         this.send("toggle_preview", { show_generated: showGenerated });
     }

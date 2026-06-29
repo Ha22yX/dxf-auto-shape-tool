@@ -47,8 +47,6 @@ class SvgViewer {
 
         this.onClick = null;
         this.onMouseMove = null;
-        this.apexPickMode = false;
-        this.symmetrySnapPoint = null;
 
         this._bindEvents();
     }
@@ -106,7 +104,6 @@ class SvgViewer {
         this.svg.addEventListener("mousemove", (e) => this._handleMouseMove(e));
         this.svg.addEventListener("mouseleave", () => {
             this.clearHover();
-            this._setSnapPreviewActive(false);
         });
 
         this.scale = 1;
@@ -202,12 +199,7 @@ class SvgViewer {
         // Selection highlight: replace any existing chain path.
         const oldPath = this.overlay.querySelector("#selected-chain-path");
         if (oldPath) oldPath.remove();
-        const oldApex = this.overlay.querySelector("#manual-apex-marker");
-        if (oldApex) oldApex.remove();
-        const oldAxis = this.overlay.querySelector("#symmetry-axis-line");
-        if (oldAxis) oldAxis.remove();
-        const oldSnap = this.overlay.querySelector("#symmetry-snap-marker");
-        if (oldSnap) oldSnap.remove();
+        this.overlay.querySelectorAll(".symmetry-axis-line").forEach((line) => line.remove());
         const d = geometry.selected_chain_path;
         if (d) {
             const path = document.createElementNS(SVG_NS, "path");
@@ -221,97 +213,26 @@ class SvgViewer {
             this.overlay.insertBefore(path, this.generatedLayer);
         }
 
-        const axis = geometry.symmetry_axis;
-        if (axis) {
+        this._renderSymmetryAxes(geometry.symmetry_axes || null);
+    }
+
+    _renderSymmetryAxes(axes) {
+        if (!axes) return;
+        for (const [kind, axis] of Object.entries(axes)) {
+            if (!axis) continue;
             const line = document.createElementNS(SVG_NS, "line");
-            line.setAttribute("id", "symmetry-axis-line");
+            line.setAttribute("class", `symmetry-axis-line symmetry-axis-${kind}`);
             line.setAttribute("x1", axis.x1.toFixed(1));
             line.setAttribute("y1", axis.y1.toFixed(1));
             line.setAttribute("x2", axis.x2.toFixed(1));
             line.setAttribute("y2", axis.y2.toFixed(1));
             line.setAttribute("stroke", "#FF5C5C");
             line.setAttribute("stroke-width", "1.8");
-            line.setAttribute("stroke-opacity", "0.55");
+            line.setAttribute("stroke-opacity", kind === "vertical" ? "0.55" : "0.38");
             line.setAttribute("stroke-dasharray", "8 7");
             line.setAttribute("vector-effect", "non-scaling-stroke");
             line.setAttribute("pointer-events", "none");
             this.overlay.insertBefore(line, this.generatedLayer);
-        }
-
-        this.symmetrySnapPoint = geometry.symmetry_snap_point || null;
-        if (this.symmetrySnapPoint) {
-            const snap = this.symmetrySnapPoint;
-            const group = document.createElementNS(SVG_NS, "g");
-            group.setAttribute("id", "symmetry-snap-marker");
-            group.setAttribute("pointer-events", "none");
-
-            const ring = document.createElementNS(SVG_NS, "circle");
-            ring.setAttribute("cx", snap.cx.toFixed(1));
-            ring.setAttribute("cy", snap.cy.toFixed(1));
-            ring.setAttribute("r", Math.max(14, snap.r || 0).toFixed(1));
-            ring.setAttribute("fill", "rgba(255, 42, 42, 0.32)");
-            ring.setAttribute("stroke", "#FF5C5C");
-            ring.setAttribute("stroke-width", "3.4");
-            ring.setAttribute("vector-effect", "non-scaling-stroke");
-
-            const dot = document.createElementNS(SVG_NS, "circle");
-            dot.setAttribute("cx", snap.cx.toFixed(1));
-            dot.setAttribute("cy", snap.cy.toFixed(1));
-            dot.setAttribute("r", "4.8");
-            dot.setAttribute("fill", "#FF2A2A");
-            dot.setAttribute("vector-effect", "non-scaling-stroke");
-
-            const crossH = document.createElementNS(SVG_NS, "line");
-            const crossSize = Math.max(22, (snap.r || 0) + 10);
-            crossH.setAttribute("x1", (snap.cx - crossSize).toFixed(1));
-            crossH.setAttribute("y1", snap.cy.toFixed(1));
-            crossH.setAttribute("x2", (snap.cx + crossSize).toFixed(1));
-            crossH.setAttribute("y2", snap.cy.toFixed(1));
-            crossH.setAttribute("stroke", "#FF5C5C");
-            crossH.setAttribute("stroke-width", "2.4");
-            crossH.setAttribute("vector-effect", "non-scaling-stroke");
-
-            const crossV = document.createElementNS(SVG_NS, "line");
-            crossV.setAttribute("x1", snap.cx.toFixed(1));
-            crossV.setAttribute("y1", (snap.cy - crossSize).toFixed(1));
-            crossV.setAttribute("x2", snap.cx.toFixed(1));
-            crossV.setAttribute("y2", (snap.cy + crossSize).toFixed(1));
-            crossV.setAttribute("stroke", "#FF5C5C");
-            crossV.setAttribute("stroke-width", "2.4");
-            crossV.setAttribute("vector-effect", "non-scaling-stroke");
-
-            group.appendChild(ring);
-            group.appendChild(dot);
-            group.appendChild(crossH);
-            group.appendChild(crossV);
-            this.overlay.insertBefore(group, this.generatedLayer);
-        }
-
-        const marker = geometry.apex_marker;
-        if (marker) {
-            const group = document.createElementNS(SVG_NS, "g");
-            group.setAttribute("id", "manual-apex-marker");
-            group.setAttribute("pointer-events", "none");
-
-            const outer = document.createElementNS(SVG_NS, "circle");
-            outer.setAttribute("cx", marker.cx.toFixed(1));
-            outer.setAttribute("cy", marker.cy.toFixed(1));
-            outer.setAttribute("r", marker.r.toFixed(1));
-            outer.setAttribute("fill", "rgba(255, 209, 102, 0.18)");
-            outer.setAttribute("stroke", "#FFD166");
-            outer.setAttribute("stroke-width", "2.2");
-            outer.setAttribute("vector-effect", "non-scaling-stroke");
-
-            const dot = document.createElementNS(SVG_NS, "circle");
-            dot.setAttribute("cx", marker.cx.toFixed(1));
-            dot.setAttribute("cy", marker.cy.toFixed(1));
-            dot.setAttribute("r", "2.8");
-            dot.setAttribute("fill", "#FFD166");
-            dot.setAttribute("vector-effect", "non-scaling-stroke");
-
-            group.appendChild(outer);
-            group.appendChild(dot);
-            this.overlay.insertBefore(group, this.generatedLayer);
         }
     }
 
@@ -468,14 +389,6 @@ class SvgViewer {
             cells.get(bucketKey).push(circle);
         }
         return { kept, removed };
-    }
-
-    setApexPickMode(active) {
-        this.apexPickMode = Boolean(active);
-        this.container.classList.toggle("is-picking-apex", this.apexPickMode);
-        if (!this.apexPickMode) {
-            this._setSnapPreviewActive(false);
-        }
     }
 
     resetView() {
@@ -794,23 +707,6 @@ class SvgViewer {
         this.onMouseMove({ x: pt.x, y: pt.y });
         if (this.isPanning) return;
         this.setLocalHoverElement(this._localHoverTarget(e));
-        this._updateApexSnapPreview(e);
-    }
-
-    _setSnapPreviewActive(active) {
-        const marker = this.overlay ? this.overlay.querySelector("#symmetry-snap-marker") : null;
-        if (!marker) return;
-        marker.classList.toggle("is-active", Boolean(active));
-    }
-
-    _updateApexSnapPreview(e) {
-        if (!this.apexPickMode || !this.symmetrySnapPoint) {
-            this._setSnapPreviewActive(false);
-            return;
-        }
-        const client = this.svgPointToClient(this.symmetrySnapPoint.cx, this.symmetrySnapPoint.cy);
-        const distance = Math.hypot(client.x - e.clientX, client.y - e.clientY);
-        this._setSnapPreviewActive(distance <= 42);
     }
 }
 

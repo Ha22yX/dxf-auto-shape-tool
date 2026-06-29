@@ -374,6 +374,13 @@ def test_preview_returns_symmetry_axis_overlay():
     assert abs(axis["x2"] - 10) < 0.2
     assert abs(axis["y1"] - axis["y2"]) > 10
 
+    axes = preview["symmetry_axes"]
+    assert axes is not None
+    assert abs(axes["vertical"]["x1"] - 10) < 0.2
+    assert abs(axes["vertical"]["x2"] - 10) < 0.2
+    assert abs(axes["horizontal"]["y1"] - 5) < 0.2
+    assert abs(axes["horizontal"]["y2"] - 5) < 0.2
+
     snap = preview["symmetry_snap_point"]
     assert snap is not None
     assert abs(snap["cx"] - 10) < 0.2
