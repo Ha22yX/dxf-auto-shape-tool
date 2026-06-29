@@ -161,6 +161,8 @@ const App = {
                 return;
             }
             svgViewer.clearHover();
+        } else if (msg.type === "no_selection") {
+            return;
         } else if (msg.type === "error") {
             this._showError(data.message || "发生错误");
         }

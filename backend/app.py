@@ -205,7 +205,7 @@ async def select_entity(session_id: str, data: dict):
     append = bool(data.get("append", False))
     handle = _select_handle(state, data)
     if not handle:
-        raise HTTPException(status_code=404, detail="未找到 nearby 实体")
+        return {"status": "no_selection"}
 
     _apply_selection(state, handle, append)
     regenerate(state)
@@ -317,10 +317,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 append = bool(data.get("append", False))
                 handle = _select_handle(state, data)
                 if not handle:
-                    await websocket.send_json({
-                        "type": "error",
-                        "data": {"message": "未找到 nearby 实体"},
-                    })
+                    await websocket.send_json({"type": "no_selection", "data": {}})
                     continue
 
                 _apply_selection(state, handle, append)
