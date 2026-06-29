@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 import ezdxf
 from ezdxf.math import Matrix44
@@ -48,6 +49,8 @@ class SessionState:
     session_id: str
     original_doc: ezdxf.document.Drawing
     working_doc: ezdxf.document.Drawing
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_accessed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     selected_handles: list[str] = field(default_factory=list)
     selected_chain: list[str] = field(default_factory=list)
     manual_apex_distance: Optional[float] = None
@@ -74,7 +77,10 @@ SESSION_STORE: dict[str, SessionState] = {}
 
 
 def get_session(session_id: str) -> Optional[SessionState]:
-    return SESSION_STORE.get(session_id)
+    state = SESSION_STORE.get(session_id)
+    if state:
+        state.last_accessed_at = datetime.now(timezone.utc)
+    return state
 
 
 def create_session(session_id: str, state: SessionState) -> None:
@@ -83,3 +89,24 @@ def create_session(session_id: str, state: SessionState) -> None:
 
 def delete_session(session_id: str) -> None:
     SESSION_STORE.pop(session_id, None)
+
+
+def delete_other_sessions(active_session_id: str) -> list[str]:
+    removed = []
+    for session_id in list(SESSION_STORE.keys()):
+        if session_id == active_session_id:
+            continue
+        SESSION_STORE.pop(session_id, None)
+        removed.append(session_id)
+    return removed
+
+
+def prune_sessions(max_age_seconds: int) -> list[str]:
+    now = datetime.now(timezone.utc)
+    removed = []
+    for session_id, state in list(SESSION_STORE.items()):
+        age = (now - state.last_accessed_at).total_seconds()
+        if age > max_age_seconds:
+            SESSION_STORE.pop(session_id, None)
+            removed.append(session_id)
+    return removed

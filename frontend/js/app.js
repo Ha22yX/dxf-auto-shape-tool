@@ -9,6 +9,11 @@ const App = {
     sessionId: null,
     bounds: null,
     scale: 1,
+    hoverInFlight: false,
+    hoverPending: null,
+    hoverTimer: null,
+    hoverLastSentAt: 0,
+    hoverActiveRequestId: null,
     apexPickMode: false,
 
     init() {
@@ -83,7 +88,7 @@ const App = {
 
         svgViewer.onHover = (evt) => {
             if (!this.sessionId) return;
-            wsClient.sendHover(evt.svgX, evt.svgY, evt.tol, evt.requestId);
+            this._queueHover(evt);
         };
     },
 
@@ -200,6 +205,54 @@ const App = {
     },
 
     _completeHoverRequest(requestId) {
+        if (
+            requestId !== undefined
+            && this.hoverActiveRequestId !== null
+            && requestId !== this.hoverActiveRequestId
+        ) {
+            return;
+        }
+        this.hoverActiveRequestId = null;
+        this.hoverInFlight = false;
+        clearTimeout(this.hoverTimer);
+        this.hoverTimer = null;
+        if (this.hoverPending) {
+            this._scheduleHoverSend();
+        }
+    },
+
+    _queueHover(evt) {
+        this.hoverPending = evt;
+        if (this.hoverInFlight) return;
+        this._scheduleHoverSend();
+    },
+
+    _scheduleHoverSend() {
+        if (this.hoverTimer) return;
+        const now = performance.now();
+        const delay = Math.max(0, 45 - (now - this.hoverLastSentAt));
+        this.hoverTimer = window.setTimeout(() => {
+            this.hoverTimer = null;
+            this._sendPendingHover();
+        }, delay);
+    },
+
+    _sendPendingHover() {
+        if (!this.sessionId || !this.hoverPending || this.hoverInFlight) return;
+        const evt = this.hoverPending;
+        this.hoverPending = null;
+        this.hoverInFlight = true;
+        this.hoverActiveRequestId = evt.requestId;
+        this.hoverLastSentAt = performance.now();
+        wsClient.sendHover(evt.svgX, evt.svgY, evt.tol, evt.requestId);
+        this.hoverTimer = window.setTimeout(() => {
+            this.hoverInFlight = false;
+            this.hoverActiveRequestId = null;
+            this.hoverTimer = null;
+            if (this.hoverPending) {
+                this._scheduleHoverSend();
+            }
+        }, 350);
     },
 
     _setApexPickMode(active) {

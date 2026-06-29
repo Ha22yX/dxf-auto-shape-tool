@@ -6,6 +6,7 @@ from ezdxf.math import Vec2
 import os
 import uuid
 import asyncio
+import time
 
 from backend.config import BASE_DIR, TEMP_DIR, GENERATED_LAYER
 from backend.state import (
@@ -14,14 +15,40 @@ from backend.state import (
     get_session,
     create_session,
     delete_session,
+    delete_other_sessions,
+    prune_sessions,
 )
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 
 app = FastAPI(title="DXF 自动图形工具")
+SESSION_TTL_SECONDS = 60 * 60
+TEMP_FILE_TTL_SECONDS = 24 * 60 * 60
 
 frontend_dir = BASE_DIR / "frontend"
 if frontend_dir.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+
+
+def _cleanup_temp_files(active_session_id: Optional[str] = None):
+    now = time.time()
+    active_prefix = f"{active_session_id}" if active_session_id else None
+    for path in TEMP_DIR.glob("*.dxf"):
+        if active_prefix and path.name.startswith(active_prefix):
+            continue
+        try:
+            if now - path.stat().st_mtime > TEMP_FILE_TTL_SECONDS:
+                path.unlink()
+        except OSError:
+            pass
+
+
+def _remove_session_files(session_ids: list[str]):
+    for session_id in session_ids:
+        for suffix in [".dxf", "_download.dxf"]:
+            try:
+                os.remove(TEMP_DIR / f"{session_id}{suffix}")
+            except FileNotFoundError:
+                pass
 
 
 @app.get("/")
@@ -37,6 +64,9 @@ async def root():
 
 @app.post("/api/upload")
 async def upload_dxf(file: UploadFile = File(...)):
+    _remove_session_files(prune_sessions(SESSION_TTL_SECONDS))
+    _cleanup_temp_files()
+
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="请上传 .dxf 文件")
 
@@ -71,6 +101,8 @@ async def upload_dxf(file: UploadFile = File(...)):
         chain_info={"total_length": 0.0, "segment_count": 0, "is_closed": False},
     )
     create_session(session_id, state)
+    _remove_session_files(delete_other_sessions(session_id))
+    _cleanup_temp_files(active_session_id=session_id)
 
     return {
         "session_id": session_id,
