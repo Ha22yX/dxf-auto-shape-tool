@@ -212,7 +212,7 @@ def test_top_gap_skips_apex_but_keeps_ray_count():
     assert sum(1 for p in placements if p["point"].x > 0) == 2
 
 
-def test_top_gap_keeps_generated_circles_out_of_apex_area():
+def test_top_gap_controls_source_points_not_generated_circle_reach():
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()
     poly = msp.add_lwpolyline([(-10, 0), (0, 10), (10, 0)], close=False)
@@ -231,9 +231,9 @@ def test_top_gap_keeps_generated_circles_out_of_apex_area():
     )
 
     apex = Vec2(0, 10)
-    centers = [center for placement in placements for center in placement["centers"]]
-    assert len(centers) == 8
-    assert all((center - apex).magnitude >= params.top_gap_distance for center in centers)
+    assert len(placements) == 4
+    assert all((p["point"] - apex).magnitude >= params.top_gap_distance - 1e-6 for p in placements)
+    assert any((p["point"] - apex).magnitude < params.ray_offset for p in placements)
 
 
 def test_top_gap_skips_apex_when_closed_chain_starts_at_top():

@@ -166,17 +166,11 @@ def _symmetry_snap_point_overlay(doc, chain, bounds, scale):
 def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=None):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
-        generated_reach = (
-            abs(params.ray_offset)
-            + max(0, params.circles_per_ray - 1) * abs(params.circle_spacing)
-            + params.circle_radius
-        )
-        effective_gap = top_gap + generated_reach
         distances = _top_gap_distances(
             doc,
             chain,
             params.ray_count,
-            effective_gap,
+            top_gap,
             closed=closed,
             manual_apex_distance=manual_apex_distance,
         )
