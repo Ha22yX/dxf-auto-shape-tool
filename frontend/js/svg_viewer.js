@@ -323,6 +323,11 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
+        const maxCapsuleStart = Math.max(0.1, Number(params.ray_offset || 0));
+        const capsuleStart = Math.max(
+            0.1,
+            Math.min(Number(params.capsule_start_distance || 0.1), maxCapsuleStart),
+        ) * svgScale;
         const source = basis.slice(0, rayCount);
         const allCircles = [];
         const rays = [];
@@ -354,7 +359,7 @@ class SvgViewer {
         }
 
         const pruned = this._quickPruneOverlaps(allCircles, radius);
-        const capsules = this._capsulesFromKeptCircles(source, pruned.kept, radius);
+        const capsules = this._capsulesFromKeptCircles(source, pruned.kept, radius, capsuleStart);
         return {
             rays,
             capsules,
@@ -363,7 +368,7 @@ class SvgViewer {
         };
     }
 
-    _capsulesFromKeptCircles(basis, keptCircles, radius) {
+    _capsulesFromKeptCircles(basis, keptCircles, radius, nearDistance) {
         const groups = new Map();
         for (const circle of keptCircles) {
             if (!groups.has(circle.placementIndex)) groups.set(circle.placementIndex, []);
@@ -372,25 +377,24 @@ class SvgViewer {
 
         const capsules = [];
         for (const [placementIndex, circles] of groups.entries()) {
-            if (!basis[placementIndex] || circles.length < 2) continue;
+            if (!basis[placementIndex] || circles.length < 1) continue;
             circles.sort((a, b) => a.circleIndex - b.circleIndex);
-            const near = circles[0];
             const far = circles[circles.length - 1];
-            capsules.push(this._capsulePathFromCenters(near, far, radius));
+            capsules.push(this._capsulePathToKeptFarCircle(basis[placementIndex], far, nearDistance, radius));
         }
         return capsules;
     }
 
-    _capsulePathFromCenters(near, far, radius) {
-        const dx = far.cx - near.cx;
-        const dy = far.cy - near.cy;
+    _capsulePathToKeptFarCircle(base, far, nearDistance, radius) {
+        const dx = far.cx - base.x;
+        const dy = far.cy - base.y;
         const length = Math.hypot(dx, dy);
         if (length <= 1e-6) return null;
         return this._capsulePathFromRayBasis(
-            { x: near.cx, y: near.cy },
+            base,
             dx / length,
             dy / length,
-            0,
+            nearDistance,
             length,
             radius,
         );

@@ -296,16 +296,15 @@ def _capsule_for_placement(placement, params, kept_items=None):
         return None
     direction = normal.normalize()
 
+    max_start = max(0.1, params.ray_offset)
+    start_distance = max(0.1, min(getattr(params, "capsule_start_distance", 0.1), max_start))
+    near_center = placement["point"] + direction * start_distance
+
     if kept_items is not None:
         if not kept_items:
             return None
-        ordered = sorted(kept_items, key=lambda item: item["circle_index"])
-        near_center = ordered[0]["center"]
-        far_center = ordered[-1]["center"]
+        far_center = max(kept_items, key=lambda item: item["circle_index"])["center"]
     else:
-        max_start = max(0.1, params.ray_offset)
-        start_distance = max(0.1, min(getattr(params, "capsule_start_distance", 0.1), max_start))
-        near_center = placement["point"] + direction * start_distance
         if placement["centers"]:
             far_center = placement["centers"][-1]
         else:

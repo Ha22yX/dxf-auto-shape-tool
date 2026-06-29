@@ -630,7 +630,7 @@ def test_capsule_start_distance_is_clamped_to_first_circle():
     assert params.capsule_start_distance == 0.1
 
 
-def test_capsule_uses_nearest_kept_circle_when_inner_circle_removed():
+def test_capsule_start_stays_parameter_controlled_when_inner_circle_removed():
     placement = {
         "point": Vec2(0, 0),
         "normal": Vec2(0, 1),
@@ -655,7 +655,7 @@ def test_capsule_uses_nearest_kept_circle_when_inner_circle_removed():
     )
 
     assert capsule is not None
-    assert capsule["near"].isclose(Vec2(0, 20))
+    assert capsule["near"].isclose(Vec2(0, 10))
     assert capsule["far"].isclose(Vec2(0, 30))
 
 
