@@ -1,0 +1,131 @@
+"""Map SVG click coordinates back to DXF entity handles."""
+import math
+from typing import Optional
+from ezdxf.math import Vec2, Vec3, Matrix44
+
+from backend.state import SessionState
+from backend.config import CLICK_TOLERANCE_PIXELS
+from backend.dxf_engine import geometry_utils as geom
+
+
+def _inverse_transform(transform: Matrix44, svg_x: float, svg_y: float) -> Vec2:
+    """Manually invert a 2D affine transform (ezdxf Matrix44.inverse may return None)."""
+    a, b, c, d, e, f, g, h, i = transform.get_2d_transformation()
+    # Matrix representation (column-major 3x3):
+    # [a, d, g]
+    # [b, e, h]
+    # [c, f, i]
+    # For affine 2D: x' = a*x + d*y + g, y' = b*x + e*y + h
+    det = a * e - b * d
+    if abs(det) < 1e-12:
+        return Vec2(svg_x, svg_y)
+
+    dx = svg_x - g
+    dy = svg_y - h
+    x = (e * dx - d * dy) / det
+    y = (-b * dx + a * dy) / det
+    return Vec2(float(x), float(y))
+
+
+def find_nearest_entity(state: SessionState, svg_x: float, svg_y: float) -> Optional[str]:
+    """
+    Find the nearest edge entity (LINE, ARC, LWPOLYLINE, POLYLINE) to the SVG click point.
+    Returns entity handle or None.
+    """
+    transform = state.entity_svg_transform
+    wcs_point = _inverse_transform(transform, svg_x, svg_y)
+
+    # Adaptive tolerance: ~5 CSS pixels converted to WCS units.
+    # We approximate using the document bounds.
+    bounds = state.working_doc.extents() if hasattr(state.working_doc, "extents") else None
+    if bounds is None:
+        # Fallback: compute bounds from modelspace entities
+        min_x, min_y, max_x, max_y = _doc_bounds(state.working_doc)
+        size = max(max_x - min_x, max_y - min_y, 1.0)
+    else:
+        size = max(bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1], 1.0)
+
+    # Assume preview fills container (~1000 px); 5 px ≈ 0.5% of drawing size
+    tolerance = size * 0.005
+    tolerance = max(tolerance, 1e-3)
+
+    best_handle = None
+    best_distance = float("inf")
+
+    for entity in state.working_doc.modelspace():
+        dtype = entity.dxftype()
+        if dtype not in ("LINE", "ARC", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ELLIPSE", "SPLINE"):
+            continue
+
+        dist, _, _ = geom.point_entity_distance(wcs_point, entity)
+        if dist < tolerance and dist < best_distance:
+            best_distance = dist
+            best_handle = entity.dxf.handle
+
+    return best_handle
+
+
+def _doc_bounds(doc) -> tuple:
+    min_x, min_y = float("inf"), float("inf")
+    max_x, max_y = float("-inf"), float("-inf")
+    for entity in doc.modelspace():
+        pts = _entity_points(entity)
+        for p in pts:
+            min_x = min(min_x, p.x)
+            min_y = min(min_y, p.y)
+            max_x = max(max_x, p.x)
+            max_y = max(max_y, p.y)
+    if not math.isfinite(min_x):
+        return (0, 0, 100, 100)
+    return (min_x, min_y, max_x, max_y)
+
+
+def _entity_points(entity) -> list:
+    dtype = entity.dxftype()
+    if dtype == "LINE":
+        return [Vec2(entity.dxf.start.x, entity.dxf.start.y), Vec2(entity.dxf.end.x, entity.dxf.end.y)]
+    if dtype in ("ARC", "CIRCLE"):
+        center = geom.vec2_from_vec3(entity.dxf.center)
+        r = entity.dxf.radius
+        pts = []
+        for i in range(8):
+            a = 2 * math.pi * i / 8
+            pts.append(Vec2(center.x + r * math.cos(a), center.y + r * math.sin(a)))
+        return pts
+    if dtype == "LWPOLYLINE":
+        pts = list(entity.get_points(format="xy"))
+        return [Vec2(p[0], p[1]) for p in pts]
+    if dtype == "POLYLINE":
+        try:
+            return [Vec2(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+        except Exception:
+            return []
+    if dtype == "ELLIPSE":
+        try:
+            center = geom.vec2_from_vec3(entity.dxf.center)
+            major_axis = geom.vec2_from_vec3(entity.dxf.major_axis)
+            ratio = entity.dxf.ratio
+            start = entity.dxf.start_param
+            end = entity.dxf.end_param
+            pts = []
+            for i in range(8):
+                t = start + (end - start) * (i / 7)
+                x = center.x + major_axis.x * math.cos(t) * ratio + (-major_axis.y) * math.sin(t)
+                y = center.y + major_axis.y * math.cos(t) * ratio + major_axis.x * math.sin(t)
+                pts.append(Vec2(x, y))
+            return pts
+        except Exception:
+            return []
+    if dtype == "SPLINE":
+        try:
+            pts = list(entity.flattening(distance=1.0))
+            return [Vec2(p.x, p.y) for p in pts]
+        except Exception:
+            return []
+    return []
+
+
+def _uniform_scale(transform: Matrix44) -> float:
+    origin = transform.transform(Vec3(0, 0, 0))
+    unit_x = transform.transform(Vec3(1, 0, 0))
+    return math.hypot(unit_x.x - origin.x, unit_x.y - origin.y)

@@ -1,0 +1,48 @@
+.svg-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #1e1e1e;
+    cursor: crosshair;
+}
+
+.svg-container svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
+.svg-container svg .selected-entity {
+    filter: drop-shadow(0 0 2px #00BFFF);
+}
+
+.svg-container:active {
+    cursor: grabbing;
+}
+
+.svg-container.is-panning {
+    cursor: grabbing;
+}
+
+#dxf-content {
+    pointer-events: all;
+}
+
+#dxf-content [data-handle] {
+    cursor: pointer;
+}
+
+#dxf-content [data-handle]:hover {
+    stroke-opacity: 0.8;
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
+}
+
+.svg-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #aaa;
+    font-size: 13px;
+}

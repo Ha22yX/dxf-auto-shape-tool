@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF 自动图形工具</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/viewer.css">
+</head>
+<body>
+    <div class="app">
+        <header class="app-header">
+            <h1>DXF 自动图形工具</h1>
+            <div class="header-actions">
+                <input type="file" id="file-input" accept=".dxf" hidden>
+                <button id="upload-btn" class="btn btn-primary">上传 DXF</button>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <section class="viewer-section">
+                <div id="svg-container" class="svg-container">
+                    <div class="empty-state">
+                        <p>请先上传 DXF 文件</p>
+                    </div>
+                </div>
+                <div class="status-bar">
+                    <span id="status-session">未连接会话</span>
+                    <span id="status-selection">已选边: 0 | 总长: 0</span>
+                    <span id="status-generated">生成圆: 0</span>
+                    <span id="status-coords">坐标: -, -</span>
+                </div>
+            </section>
+
+            <aside class="panel-section">
+                <div class="panel-card">
+                    <h2>参数设置</h2>
+
+                    <div class="form-group slider-group" data-param="circle_radius">
+                        <div class="slider-header">
+                            <label>圆圈半径</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="param-circle-radius" value="5" step="0.1" min="0.1" max="9999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-circle-radius-slider" min="0.1" max="50" step="0.1" value="5">
+                        <div class="slider-hints"><span>0.1</span><span>25</span><span>50</span></div>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="circles_per_ray">
+                        <div class="slider-header">
+                            <label>每射线圆数</label>
+                            <input type="number" id="param-circles-per-ray" value="3" step="1" min="0" max="10">
+                        </div>
+                        <input type="range" id="param-circles-per-ray-slider" min="0" max="10" step="1" value="3">
+                        <div class="slider-hints"><span>0</span><span>5</span><span>10</span></div>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="circle_spacing">
+                        <div class="slider-header">
+                            <label>圆间距</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="param-circle-spacing" value="15" step="0.5" min="0" max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-circle-spacing-slider" min="0" max="200" step="0.5" value="15">
+                        <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="ray_offset">
+                        <div class="slider-header">
+                            <label>射线整体偏移</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="param-ray-offset" value="5" step="0.5" min="-99999" max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-ray-offset-slider" min="-500" max="500" step="0.5" value="5">
+                        <div class="slider-hints"><span>-500</span><span>0</span><span>500</span></div>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="ray_count">
+                        <div class="slider-header">
+                            <label>射线数量</label>
+                            <input type="number" id="param-ray-count" value="10" step="1" min="0" max="50">
+                        </div>
+                        <input type="range" id="param-ray-count-slider" min="0" max="50" step="1" value="10">
+                        <div class="slider-hints"><span>0</span><span>25</span><span>50</span></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="param-ray-direction">射线方向</label>
+                        <select id="param-ray-direction">
+                            <option value="inward" selected>向内</option>
+                            <option value="outward">向外</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label for="toggle-preview">显示生成图</label>
+                        <input type="checkbox" id="toggle-preview" checked>
+                    </div>
+                </div>
+
+                <div class="panel-card actions-card">
+                    <button id="save-btn" class="btn btn-success" disabled>保存 DXF</button>
+                    <button id="clear-selection-btn" class="btn btn-secondary" disabled>清空选择</button>
+                </div>
+
+                <div class="panel-card help-card">
+                    <h3>操作说明</h3>
+                    <ul>
+                        <li>点击线条选中外边</li>
+                        <li>Ctrl + 点击追加相连边</li>
+                        <li>滚轮缩放，拖拽平移</li>
+                        <li>调整参数实时预览</li>
+                    </ul>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/svg_viewer.js"></script>
+    <script src="/static/js/selector.js"></script>
+    <script src="/static/js/parameter_panel.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
