@@ -495,7 +495,7 @@ class SvgViewer {
         if (!circles.length || radius <= 0) {
             return { kept: circles, removed: [] };
         }
-        const minDistance = radius * 2 + Math.max(0, clearance) - 0.01;
+        const minDistance = radius * 2 - 0.01;
         const minDistanceSq = minDistance * minDistance;
         const cellSize = Math.max(radius * 2, 1);
         const cells = new Map();
@@ -541,13 +541,15 @@ class SvgViewer {
         axisY = null,
         aboveAxisGap = 0,
         belowAxisGap = 0,
+        axisX = null,
+        clearance = 0,
     ) {
         if (keptCircles.length <= 1 || radius <= 0) {
             return { kept: keptCircles, removed: removedCircles };
         }
         const kept = keptCircles.slice();
         const removed = removedCircles.slice();
-        const minDistance = radius * 2 - 0.01;
+        const minDistance = radius * 2 + Math.max(0, clearance) - 0.01;
 
         for (let guard = 0; guard < 10000; guard++) {
             const capsules = this._quickCapsuleRecords(
