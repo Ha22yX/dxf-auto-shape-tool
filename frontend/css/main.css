@@ -11,10 +11,10 @@ body {
     overflow: hidden;
 }
 
-.global-loading {
-    position: fixed;
+.preview-loading {
+    position: absolute;
     inset: 0;
-    z-index: 1000;
+    z-index: 20;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -25,12 +25,12 @@ body {
     transition: opacity 0.12s ease, visibility 0.12s ease;
 }
 
-.global-loading.is-visible {
+.preview-loading.is-visible {
     opacity: 1;
     visibility: visible;
 }
 
-.global-loading-indicator {
+.preview-loading-indicator {
     display: inline-flex;
     align-items: center;
     gap: 10px;
@@ -43,16 +43,16 @@ body {
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
-.global-loading-spinner {
+.preview-loading-spinner {
     width: 16px;
     height: 16px;
     border: 2px solid rgba(255, 255, 255, 0.22);
     border-top-color: #00BFFF;
     border-radius: 50%;
-    animation: global-loading-spin 0.75s linear infinite;
+    animation: preview-loading-spin 0.75s linear infinite;
 }
 
-@keyframes global-loading-spin {
+@keyframes preview-loading-spin {
     to {
         transform: rotate(360deg);
     }

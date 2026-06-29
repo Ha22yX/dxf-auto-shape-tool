@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Main application orchestration.
  *
  * Upload returns the accurate base SVG (rendered once). Parameter/selection
@@ -85,7 +85,7 @@ const App = {
 
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;
-            this._showGlobalLoading("计算中...");
+            this._showPreviewLoading("计算中...");
             wsClient.sendParams(params);
         };
 
@@ -110,7 +110,7 @@ const App = {
             const saveBtn = document.getElementById("save-btn");
             try {
                 saveBtn.disabled = true;
-                this._showGlobalLoading("保存中...");
+                this._showPreviewLoading("保存中...");
                 const synced = await API.updateParams(this.sessionId, parameterPanel.getParams());
                 if (synced.preview_geometry) {
                     svgViewer.setOverlay(synced.preview_geometry, parameterPanel.getShowGenerated());
@@ -130,7 +130,7 @@ const App = {
             } catch (err) {
                 this._showError(err.message || "下载失败");
             } finally {
-                this._hideGlobalLoading();
+                this._hidePreviewLoading();
                 saveBtn.disabled = false;
             }
         });
@@ -154,7 +154,7 @@ const App = {
             if (data.stale_params_preview) return;
             const geometry = data.preview_geometry || {};
             svgViewer.setOverlay(geometry, data.show_generated);
-            this._hideGlobalLoading();
+            this._hidePreviewLoading();
 
             if (data.chain_info) {
                 this._updateStatus({ chain_info: data.chain_info });
@@ -167,7 +167,7 @@ const App = {
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
             svgViewer.clearHover();
-            this._hideGlobalLoading();
+            this._hidePreviewLoading();
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
             });
@@ -185,7 +185,7 @@ const App = {
         } else if (msg.type === "no_selection") {
             return;
         } else if (msg.type === "error") {
-            this._hideGlobalLoading();
+            this._hidePreviewLoading();
             this._showError(data.message || "发生错误");
         }
     },
@@ -206,21 +206,21 @@ const App = {
 
     _setLoading(show) {
         if (show) {
-            this._showGlobalLoading("加载中...");
+            this._showPreviewLoading("加载中...");
         } else {
-            this._hideGlobalLoading();
+            this._hidePreviewLoading();
         }
     },
 
-    _showGlobalLoading(text = "计算中...") {
-        const overlay = document.getElementById("global-loading");
-        const label = document.getElementById("global-loading-text");
+    _showPreviewLoading(text = "计算中...") {
+        const overlay = document.getElementById("preview-loading");
+        const label = document.getElementById("preview-loading-text");
         if (label) label.textContent = text;
         if (overlay) overlay.classList.add("is-visible");
     },
 
-    _hideGlobalLoading() {
-        const overlay = document.getElementById("global-loading");
+    _hidePreviewLoading() {
+        const overlay = document.getElementById("preview-loading");
         if (overlay) overlay.classList.remove("is-visible");
     },
 
@@ -233,3 +233,4 @@ const App = {
 window.addEventListener("DOMContentLoaded", () => {
     App.init();
 });
+
