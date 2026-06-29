@@ -131,6 +131,21 @@ class SvgViewer {
             this.generatedLayer.appendChild(line);
         }
 
+        const removedCircles = geometry.removed_circles || [];
+        for (const c of removedCircles) {
+            const circle = document.createElementNS(SVG_NS, "circle");
+            circle.setAttribute("cx", c.cx.toFixed(1));
+            circle.setAttribute("cy", c.cy.toFixed(1));
+            circle.setAttribute("r", c.r.toFixed(1));
+            circle.setAttribute("fill", "rgba(160, 160, 160, 0.14)");
+            circle.setAttribute("stroke", "#9A9A9A");
+            circle.setAttribute("stroke-width", "1.6");
+            circle.setAttribute("stroke-opacity", "0.48");
+            circle.setAttribute("stroke-dasharray", "4 4");
+            circle.setAttribute("vector-effect", "non-scaling-stroke");
+            this.generatedLayer.appendChild(circle);
+        }
+
         const circles = geometry.circles || [];
         for (const c of circles) {
             const circle = document.createElementNS(SVG_NS, "circle");

@@ -246,6 +246,8 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
         ray_end = centers[-1] if centers else ray_start
         placements.append({
             "point": sample.point,
+            "source_distance": sample.distance,
+            "normal": normal,
             "ray_start": ray_start,
             "ray_end": ray_end,
             "centers": centers,
@@ -253,6 +255,148 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
     if params.dedupe_closed_rays and not top_gap_active:
         placements = _dedupe_placements_by_source(placements)
     return placements
+
+
+def _circle_priority(item, axis_center_x):
+    normal = item.get("normal", Vec2(0, 1))
+    vertical_bonus = 1.0 - min(1.0, abs(normal.x))
+    axis_distance = abs(item["center"].x - axis_center_x)
+    # Keep stable straight-bottom rays first, then keep outer circles when the
+    # local choice is otherwise ambiguous. The tiny id term keeps decisions
+    # deterministic.
+    return (
+        vertical_bonus * 1000.0
+        + axis_distance * 0.01
+        - item["circle_index"] * 0.001
+        - item["id"] * 0.000001
+    )
+
+
+def _flatten_circle_items(placements, radius):
+    items = []
+    for placement_index, placement in enumerate(placements):
+        for circle_index, center in enumerate(placement["centers"]):
+            items.append({
+                "id": len(items),
+                "center": center,
+                "radius": radius,
+                "placement_index": placement_index,
+                "circle_index": circle_index,
+                "source_point": placement["point"],
+                "source_distance": placement.get("source_distance", 0.0),
+                "normal": placement.get("normal", Vec2(0, 1)),
+            })
+    return items
+
+
+def _distance_square(a: Vec2, b: Vec2):
+    delta = a - b
+    return delta.x * delta.x + delta.y * delta.y
+
+
+def _mirror_groups(items, axis_center_x, radius):
+    unused = {item["id"] for item in items}
+    by_id = {item["id"]: item for item in items}
+    groups = []
+    pair_limit_sq = max(radius * 4.0, POINT_TOLERANCE * 10.0) ** 2
+
+    for item in items:
+        item_id = item["id"]
+        if item_id not in unused:
+            continue
+        unused.remove(item_id)
+
+        mirror = Vec2(2.0 * axis_center_x - item["center"].x, item["center"].y)
+        candidates = [
+            by_id[other_id]
+            for other_id in unused
+            if by_id[other_id]["circle_index"] == item["circle_index"]
+            and (by_id[other_id]["center"].x - axis_center_x) * (item["center"].x - axis_center_x) <= 0
+        ]
+        partner = None
+        if candidates:
+            partner = min(candidates, key=lambda other: _distance_square(other["center"], mirror))
+            if _distance_square(partner["center"], mirror) > pair_limit_sq:
+                partner = None
+
+        ids = [item_id]
+        if partner is not None:
+            ids.append(partner["id"])
+            unused.remove(partner["id"])
+        groups.append(ids)
+    return groups
+
+
+def _overlap_pruned_circle_items(doc, chain, params, placements):
+    items = _flatten_circle_items(placements, params.circle_radius)
+    if len(items) <= 1 or params.circle_radius <= 0:
+        return items, []
+
+    axis = geom.estimate_chain_symmetry_axis(doc, chain)
+    axis_center_x = axis["center"].x if axis else (
+        sum(item["center"].x for item in items) / len(items)
+    )
+
+    groups = _mirror_groups(items, axis_center_x, params.circle_radius)
+    item_to_group = {}
+    for group_index, ids in enumerate(groups):
+        for item_id in ids:
+            item_to_group[item_id] = group_index
+
+    by_id = {item["id"]: item for item in items}
+    group_scores = [
+        sum(_circle_priority(by_id[item_id], axis_center_x) for item_id in ids)
+        for ids in groups
+    ]
+    removed_groups = set()
+    min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
+
+    while True:
+        active_ids = [
+            item["id"]
+            for item in items
+            if item_to_group[item["id"]] not in removed_groups
+        ]
+        best_conflict = None
+        for i, first_id in enumerate(active_ids):
+            first = by_id[first_id]
+            for second_id in active_ids[i + 1:]:
+                second = by_id[second_id]
+                distance = (first["center"] - second["center"]).magnitude
+                penetration = min_distance - distance
+                if penetration <= 0:
+                    continue
+                g1 = item_to_group[first_id]
+                g2 = item_to_group[second_id]
+                conflict = (penetration, g1, g2)
+                if best_conflict is None or conflict[0] > best_conflict[0]:
+                    best_conflict = conflict
+
+        if best_conflict is None:
+            break
+
+        _, g1, g2 = best_conflict
+        if g1 == g2:
+            removed_groups.add(g1)
+            continue
+        if group_scores[g1] < group_scores[g2]:
+            removed_groups.add(g1)
+        elif group_scores[g2] < group_scores[g1]:
+            removed_groups.add(g2)
+        else:
+            # Same score: remove the smaller/inner group first, deterministic.
+            g1_axis = sum(abs(by_id[item_id]["center"].x - axis_center_x) for item_id in groups[g1])
+            g2_axis = sum(abs(by_id[item_id]["center"].x - axis_center_x) for item_id in groups[g2])
+            removed_groups.add(g1 if (len(groups[g1]), g1_axis, -g1) < (len(groups[g2]), g2_axis, -g2) else g2)
+
+    kept = []
+    removed = []
+    for item in items:
+        if item_to_group[item["id"]] in removed_groups:
+            removed.append(item)
+        else:
+            kept.append(item)
+    return kept, removed
 
 
 def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
@@ -266,17 +410,28 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     placements = compute_placements(
         doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
     )
+    kept_items, removed_items = _overlap_pruned_circle_items(doc, chain, params, placements)
 
     circles = []
+    removed_circles = []
     rays = []
+    for item in kept_items:
+        c = item["center"]
+        cx, cy = _to_svg(c.x, c.y, bounds, scale)
+        circles.append({
+            "cx": cx,
+            "cy": cy,
+            "r": params.circle_radius * scale,
+        })
+    for item in removed_items:
+        c = item["center"]
+        cx, cy = _to_svg(c.x, c.y, bounds, scale)
+        removed_circles.append({
+            "cx": cx,
+            "cy": cy,
+            "r": params.circle_radius * scale,
+        })
     for p in placements:
-        for c in p["centers"]:
-            cx, cy = _to_svg(c.x, c.y, bounds, scale)
-            circles.append({
-                "cx": cx,
-                "cy": cy,
-                "r": params.circle_radius * scale,
-            })
         x1, y1 = _to_svg(p["point"].x, p["point"].y, bounds, scale)
         x2, y2 = _to_svg(p["ray_end"].x, p["ray_end"].y, bounds, scale)
         rays.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
@@ -290,12 +445,14 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
 
     return {
         "circles": circles,
+        "removed_circles": removed_circles,
         "rays": rays,
         "selected_chain_path": chain_path,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
         "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
+        "removed_count": len(removed_circles),
     }
 
 
@@ -343,19 +500,20 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     )
     if not placements:
         return [], []
+    kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)
 
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
         doc.layers.add(GENERATED_LAYER)
     circle_handles = []
 
-    for p in placements:
-        for center in p["centers"]:
-            circle = msp.add_circle(
-                center=(center.x, center.y),
-                radius=params.circle_radius,
-                dxfattribs={"layer": GENERATED_LAYER},
-            )
-            circle_handles.append(circle.dxf.handle)
+    for item in kept_items:
+        center = item["center"]
+        circle = msp.add_circle(
+            center=(center.x, center.y),
+            radius=params.circle_radius,
+            dxfattribs={"layer": GENERATED_LAYER},
+        )
+        circle_handles.append(circle.dxf.handle)
 
     return circle_handles, []

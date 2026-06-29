@@ -381,6 +381,45 @@ def test_preview_returns_manual_apex_marker():
     assert preview["apex_marker"] == {"cx": 50.0, "cy": 80.0, "r": 5.0}
 
 
+def test_overlap_pruning_marks_removed_circles_and_skips_export():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    line = msp.add_line((0, 0), (10, 0))
+    params = CircleParams(
+        circle_radius=3.0,
+        circles_per_ray=1,
+        circle_spacing=1.0,
+        ray_offset=0.0,
+        ray_count=3,
+        ray_direction="outward",
+        dedupe_closed_rays=False,
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        [line.dxf.handle],
+        params,
+        closed=False,
+        bounds={"min": [0, -5], "max": [10, 5]},
+        scale=1.0,
+    )
+
+    assert len(preview["circles"]) == 2
+    assert len(preview["removed_circles"]) == 1
+    assert preview["generated_count"] == 2
+    assert preview["removed_count"] == 1
+
+    export_doc = ezdxf.new("R2010")
+    export_line = export_doc.modelspace().add_line((0, 0), (10, 0))
+    circle_handles, _ = circle_generator.generate_circles(
+        export_doc,
+        [export_line.dxf.handle],
+        params,
+        closed=False,
+    )
+    assert len(circle_handles) == 2
+
+
 def test_circle_generator_on_circle():
     """Selecting a full circle should generate evenly spaced inward/outward circles."""
     doc = ezdxf.new("R2010")
