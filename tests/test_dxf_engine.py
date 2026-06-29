@@ -197,6 +197,32 @@ def test_closed_chain_endpoint_rays_can_be_deduped():
     assert (placements[0]["point"] - placements[-1]["point"]).magnitude < 1e-6
 
 
+def test_dedupe_switch_skips_terminal_endpoint_even_if_open():
+    doc = ezdxf.new("R2010")
+    line = doc.modelspace().add_line((0, 0), (10, 0))
+    params = CircleParams(
+        circle_radius=0.5,
+        circles_per_ray=1,
+        circle_spacing=2.0,
+        ray_offset=1.0,
+        ray_count=3,
+        ray_direction="inward",
+        dedupe_closed_rays=True,
+    )
+
+    placements = circle_generator.compute_placements(
+        doc, [line.dxf.handle], params, closed=False
+    )
+    assert len(placements) == 3
+    assert all(p["point"].x < 10 for p in placements)
+
+    params.dedupe_closed_rays = False
+    placements = circle_generator.compute_placements(
+        doc, [line.dxf.handle], params, closed=False
+    )
+    assert placements[-1]["point"].x == 10
+
+
 def test_preview_rays_start_on_selected_edge():
     doc = make_rect_doc()
     handle = next(e.dxf.handle for e in doc.modelspace())

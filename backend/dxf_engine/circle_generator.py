@@ -83,8 +83,8 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
     if not chain or params.ray_count <= 0 or params.circles_per_ray <= 0:
         return []
 
-    sample_closed = closed and params.dedupe_closed_rays
-    samples = geom.sample_chain(doc, chain, params.ray_count, closed=sample_closed)
+    skip_terminal_endpoint = params.dedupe_closed_rays
+    samples = geom.sample_chain(doc, chain, params.ray_count, closed=skip_terminal_endpoint)
     if not samples:
         return []
 
@@ -104,7 +104,7 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
             "ray_end": ray_end,
             "centers": centers,
         })
-    if closed and params.dedupe_closed_rays:
+    if params.dedupe_closed_rays:
         placements = _dedupe_placements_by_source(placements)
     return placements
 
