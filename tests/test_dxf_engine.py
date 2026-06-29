@@ -405,6 +405,24 @@ def test_preview_returns_manual_apex_marker():
     assert preview["apex_marker"] == {"cx": 50.0, "cy": 80.0, "r": 5.0}
 
 
+def test_preview_returns_default_apex_marker_without_manual_selection():
+    doc = make_rect_doc()
+    handles = [e.dxf.handle for e in doc.modelspace()]
+    params = CircleParams(ray_count=4, circle_radius=2.0)
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        handles,
+        params,
+        closed=True,
+        bounds={"min": [0, 0], "max": [100, 80]},
+        scale=1.0,
+    )
+
+    assert preview["apex_marker"] is not None
+    assert preview["apex_marker"]["cy"] == 0.0
+
+
 def test_overlap_pruning_marks_removed_circles_and_skips_export():
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()
@@ -648,6 +666,47 @@ def test_generate_circles_exports_capsule_outline_entities():
     assert sum(1 for entity in generated if entity.dxftype() == "CIRCLE") == 2
     assert sum(1 for entity in generated if entity.dxftype() == "LINE") == 2
     assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 2
+
+
+def test_capsule_axis_gap_skips_capsules_but_keeps_circles_in_preview_and_export():
+    doc = make_rect_doc()
+    handles = [e.dxf.handle for e in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=5.0,
+        ray_offset=10.0,
+        capsule_start_distance=1.0,
+        capsule_axis_gap_distance=1000.0,
+        ray_count=6,
+        ray_direction="outward",
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        handles,
+        params,
+        closed=True,
+        bounds={"min": [0, 0], "max": [100, 80]},
+        scale=1.0,
+    )
+
+    assert len(preview["circles"]) > 0
+    assert preview["capsules"] == []
+    assert preview["capsule_gap_guide"] is not None
+
+    circle_handles, _ = circle_generator.generate_circles(
+        doc,
+        handles,
+        params,
+        closed=True,
+    )
+    generated = list(doc.modelspace().query('*[layer=="GENERATED_CIRCLES"]'))
+
+    assert len(circle_handles) > 0
+    assert sum(1 for entity in generated if entity.dxftype() == "CIRCLE") == len(circle_handles)
+    assert sum(1 for entity in generated if entity.dxftype() == "LINE") == 0
+    assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 0
 
 
 def test_capsule_start_distance_is_clamped_to_first_circle():

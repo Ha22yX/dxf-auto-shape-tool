@@ -7,6 +7,8 @@ __pycache__/
 # Temp runtime artifacts (uploads, generated downloads, scratch scripts)
 temp/*
 !temp/.gitignore
+server.log
+server.err.log
 
 # Local env
 .venv/

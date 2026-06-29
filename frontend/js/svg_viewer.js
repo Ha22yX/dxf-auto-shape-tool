@@ -21,6 +21,8 @@ class SvgViewer {
         this.hoverOwners = new Map();
         this.lastGeometry = null;
         this.lastShowGenerated = true;
+        this.currentPreviewParams = null;
+        this.capsuleGapGuideVisible = false;
 
         // View transform
         this.scale = 1;
@@ -127,8 +129,14 @@ class SvgViewer {
         if (!this.lastGeometry || !this.lastGeometry.basis || !this.lastGeometry.basis.length) {
             return false;
         }
+        this.currentPreviewParams = params;
         const geometry = this._geometryFromBasis(this.lastGeometry, params);
         this._renderGeneratedGeometry(geometry, showGenerated);
+        if (this.capsuleGapGuideVisible) {
+            this._renderCapsuleGapGuide(
+                this._capsuleGapGuideFromParams(this.lastGeometry, params),
+            );
+        }
         return true;
     }
 
@@ -200,6 +208,9 @@ class SvgViewer {
         const oldPath = this.overlay.querySelector("#selected-chain-path");
         if (oldPath) oldPath.remove();
         this.overlay.querySelectorAll(".symmetry-axis-line").forEach((line) => line.remove());
+        this.overlay.querySelectorAll(".capsule-gap-guide-line").forEach((line) => line.remove());
+        const oldApex = this.overlay.querySelector("#default-apex-marker");
+        if (oldApex) oldApex.remove();
         const d = geometry.selected_chain_path;
         if (d) {
             const path = document.createElementNS(SVG_NS, "path");
@@ -213,7 +224,41 @@ class SvgViewer {
             this.overlay.insertBefore(path, this.generatedLayer);
         }
 
+        this._renderDefaultApexMarker(geometry.apex_marker || null);
         this._renderSymmetryAxes(geometry.symmetry_axes || null);
+        if (this.capsuleGapGuideVisible) {
+            this._renderCapsuleGapGuide(
+                this._capsuleGapGuideFromParams(geometry, this.currentPreviewParams),
+            );
+        }
+    }
+
+    _renderDefaultApexMarker(marker) {
+        if (!marker || !this.overlay || !this.generatedLayer) return;
+        const group = document.createElementNS(SVG_NS, "g");
+        group.setAttribute("id", "default-apex-marker");
+        group.setAttribute("pointer-events", "none");
+
+        const outer = document.createElementNS(SVG_NS, "circle");
+        outer.setAttribute("cx", marker.cx.toFixed(1));
+        outer.setAttribute("cy", marker.cy.toFixed(1));
+        outer.setAttribute("r", Math.max(5, Number(marker.r || 5)).toFixed(1));
+        outer.setAttribute("fill", "rgba(255, 209, 102, 0.16)");
+        outer.setAttribute("stroke", "#FFD166");
+        outer.setAttribute("stroke-width", "2.2");
+        outer.setAttribute("vector-effect", "non-scaling-stroke");
+
+        const dot = document.createElementNS(SVG_NS, "circle");
+        dot.setAttribute("cx", marker.cx.toFixed(1));
+        dot.setAttribute("cy", marker.cy.toFixed(1));
+        dot.setAttribute("r", "2.8");
+        dot.setAttribute("fill", "#FFD166");
+        dot.setAttribute("stroke", "none");
+        dot.setAttribute("vector-effect", "non-scaling-stroke");
+
+        group.appendChild(outer);
+        group.appendChild(dot);
+        this.overlay.insertBefore(group, this.generatedLayer);
     }
 
     _renderSymmetryAxes(axes) {
@@ -236,6 +281,51 @@ class SvgViewer {
         }
     }
 
+    setCapsuleGapGuideVisible(visible, params = null) {
+        this.capsuleGapGuideVisible = Boolean(visible);
+        if (params) this.currentPreviewParams = params;
+        const guide = this.capsuleGapGuideVisible
+            ? this._capsuleGapGuideFromParams(this.lastGeometry, this.currentPreviewParams)
+            : null;
+        this._renderCapsuleGapGuide(guide);
+    }
+
+    _capsuleGapGuideFromParams(baseGeometry, params) {
+        if (!baseGeometry || !baseGeometry.symmetry_axes || !baseGeometry.symmetry_axes.horizontal) {
+            return null;
+        }
+        const h = baseGeometry.symmetry_axes.horizontal;
+        const svgScale = Number(baseGeometry.scale || this.baseScale || 1);
+        const gap = Math.max(0, Number(params && params.capsule_axis_gap_distance || 0)) * svgScale;
+        const centerY = (Number(h.y1) + Number(h.y2)) / 2;
+        return {
+            upper: { x1: h.x1, y1: centerY - gap, x2: h.x2, y2: centerY - gap },
+            lower: { x1: h.x1, y1: centerY + gap, x2: h.x2, y2: centerY + gap },
+        };
+    }
+
+    _renderCapsuleGapGuide(guide) {
+        if (!this.overlay || !this.generatedLayer) return;
+        this.overlay.querySelectorAll(".capsule-gap-guide-line").forEach((line) => line.remove());
+        if (!guide) return;
+        for (const axis of [guide.upper, guide.lower]) {
+            if (!axis) continue;
+            const line = document.createElementNS(SVG_NS, "line");
+            line.setAttribute("class", "capsule-gap-guide-line");
+            line.setAttribute("x1", Number(axis.x1).toFixed(1));
+            line.setAttribute("y1", Number(axis.y1).toFixed(1));
+            line.setAttribute("x2", Number(axis.x2).toFixed(1));
+            line.setAttribute("y2", Number(axis.y2).toFixed(1));
+            line.setAttribute("stroke", "#FFD166");
+            line.setAttribute("stroke-width", "2.2");
+            line.setAttribute("stroke-opacity", "0.85");
+            line.setAttribute("stroke-dasharray", "9 6");
+            line.setAttribute("vector-effect", "non-scaling-stroke");
+            line.setAttribute("pointer-events", "none");
+            this.overlay.insertBefore(line, this.generatedLayer);
+        }
+    }
+
     _geometryFromBasis(baseGeometry, params) {
         const basis = baseGeometry.basis || [];
         const svgScale = Number(baseGeometry.scale || this.baseScale || 1);
@@ -244,6 +334,11 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
+        const axisGap = Math.max(0, Number(params.capsule_axis_gap_distance || 0)) * svgScale;
+        const horizontalAxis = baseGeometry.symmetry_axes && baseGeometry.symmetry_axes.horizontal;
+        const horizontalAxisY = horizontalAxis
+            ? (Number(horizontalAxis.y1) + Number(horizontalAxis.y2)) / 2
+            : null;
         const maxCapsuleStart = Math.max(0.1, Number(params.ray_offset || 0));
         const capsuleStart = Math.max(
             0.1,
@@ -280,7 +375,14 @@ class SvgViewer {
         }
 
         const pruned = this._quickPruneOverlaps(allCircles, radius);
-        const capsules = this._capsulesFromKeptCircles(source, pruned.kept, radius, capsuleStart);
+        const capsules = this._capsulesFromKeptCircles(
+            source,
+            pruned.kept,
+            radius,
+            capsuleStart,
+            horizontalAxisY,
+            axisGap,
+        );
         return {
             rays,
             capsules,
@@ -289,7 +391,7 @@ class SvgViewer {
         };
     }
 
-    _capsulesFromKeptCircles(basis, keptCircles, radius, nearDistance) {
+    _capsulesFromKeptCircles(basis, keptCircles, radius, nearDistance, axisY = null, axisGap = 0) {
         const groups = new Map();
         for (const circle of keptCircles) {
             if (!groups.has(circle.placementIndex)) groups.set(circle.placementIndex, []);
@@ -299,6 +401,9 @@ class SvgViewer {
         const capsules = [];
         for (const [placementIndex, circles] of groups.entries()) {
             if (!basis[placementIndex] || circles.length < 1) continue;
+            if (axisY !== null && Math.abs(Number(basis[placementIndex].y) - axisY) <= axisGap + 0.001) {
+                continue;
+            }
             circles.sort((a, b) => a.circleIndex - b.circleIndex);
             const far = circles[circles.length - 1];
             capsules.push(this._capsulePathToKeptFarCircle(basis[placementIndex], far, nearDistance, radius));

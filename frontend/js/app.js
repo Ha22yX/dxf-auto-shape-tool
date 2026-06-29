@@ -93,6 +93,12 @@ const App = {
             if (!this.sessionId) return;
             wsClient.sendToggle(showGenerated);
         };
+
+        parameterPanel.onGuideChange = (key, visible, params) => {
+            if (key === "capsule_axis_gap_distance") {
+                svgViewer.setCapsuleGapGuideVisible(visible, params);
+            }
+        };
     },
 
     _bindActions() {

@@ -181,6 +181,40 @@ def _symmetry_axis_overlay(doc, chain, bounds, scale):
     return axes["vertical"] if axes else None
 
 
+def _chain_axis(doc, chain):
+    return geom.estimate_chain_symmetry_axis(doc, chain)
+
+
+def _inside_capsule_axis_gap(placement, axis, params):
+    gap = max(0.0, getattr(params, "capsule_axis_gap_distance", 0.0))
+    if gap <= 0 or not axis:
+        return False
+    return abs(placement["point"].y - axis["center"].y) <= gap + POINT_TOLERANCE
+
+
+def _capsule_gap_guide_overlay(doc, chain, params, bounds, scale):
+    axes = _symmetry_axes_overlay(doc, chain, bounds, scale)
+    if not axes or not axes.get("horizontal"):
+        return None
+    gap = max(0.0, getattr(params, "capsule_axis_gap_distance", 0.0)) * scale
+    horizontal = axes["horizontal"]
+    center_y = (horizontal["y1"] + horizontal["y2"]) / 2.0
+    return {
+        "upper": {
+            "x1": horizontal["x1"],
+            "y1": center_y - gap,
+            "x2": horizontal["x2"],
+            "y2": center_y - gap,
+        },
+        "lower": {
+            "x1": horizontal["x1"],
+            "y1": center_y + gap,
+            "x2": horizontal["x2"],
+            "y2": center_y + gap,
+        },
+    }
+
+
 def _symmetry_snap_point_overlay(doc, chain, bounds, scale):
     axis = geom.estimate_chain_symmetry_axis(doc, chain)
     sample = geom.nearest_axis_sample_on_chain(doc, chain, axis) if axis else None
@@ -565,6 +599,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     )
     kept_items, removed_items = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
+    axis = _chain_axis(doc, chain)
 
     circles = []
     removed_circles = []
@@ -579,13 +614,14 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
             "nx": p["normal"].x * scale,
             "ny": -p["normal"].y * scale,
         })
-        capsule = _capsule_for_placement(
-            p,
-            params,
-            kept_by_placement.get(placement_index, []),
-        )
-        if capsule:
-            capsules.append({"d": _capsule_svg_path(capsule, bounds, scale)})
+        if not _inside_capsule_axis_gap(p, axis, params):
+            capsule = _capsule_for_placement(
+                p,
+                params,
+                kept_by_placement.get(placement_index, []),
+            )
+            if capsule:
+                capsules.append({"d": _capsule_svg_path(capsule, bounds, scale)})
     for item in kept_items:
         c = item["center"]
         cx, cy = _to_svg(c.x, c.y, bounds, scale)
@@ -609,7 +645,12 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
 
     chain_path = _chain_path_d(doc, chain, closed, bounds, scale)
     apex_marker = None
-    apex_sample = _manual_apex_marker(doc, chain, manual_apex_distance)
+    total = geom.chain_length(doc, chain)
+    apex_sample = (
+        _apex_sample(doc, chain, total, manual_apex_distance=manual_apex_distance)
+        if total > 1e-9
+        else None
+    )
     if apex_sample is not None:
         ax, ay = _to_svg(apex_sample.point.x, apex_sample.point.y, bounds, scale)
         apex_marker = {"cx": ax, "cy": ay, "r": max(5.0, params.circle_radius * scale)}
@@ -625,6 +666,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
         "symmetry_axes": _symmetry_axes_overlay(doc, chain, bounds, scale),
+        "capsule_gap_guide": _capsule_gap_guide_overlay(doc, chain, params, bounds, scale),
         "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
         "removed_count": len(removed_circles),
@@ -677,6 +719,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
         return [], []
     kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
+    axis = _chain_axis(doc, chain)
 
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
@@ -693,6 +736,8 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
         circle_handles.append(circle.dxf.handle)
 
     for placement_index, placement in enumerate(placements):
+        if _inside_capsule_axis_gap(placement, axis, params):
+            continue
         capsule = _capsule_for_placement(
             placement,
             params,

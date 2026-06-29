@@ -49,6 +49,14 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
+            capsule_axis_gap_distance: {
+                min: 0,
+                max: 99999,
+                sliderMin: 0,
+                sliderMax: 500,
+                step: 0.5,
+                decimals: 1,
+            },
             top_gap_distance: {
                 min: 0,
                 max: 99999,
@@ -86,6 +94,8 @@ class ParameterPanel {
         this.onParamsChange = null;
         this.onParamsPreview = null;
         this.onToggleChange = null;
+        this.onGuideChange = null;
+        this._activeGuideKey = null;
 
         this._debounceTimer = null;
         this._bindEvents();
@@ -254,6 +264,10 @@ class ParameterPanel {
                 "capsule_start_distance",
                 parse("capsule_start_distance", 0.1),
             ),
+            capsule_axis_gap_distance: this._normalizeInputValue(
+                "capsule_axis_gap_distance",
+                parse("capsule_axis_gap_distance", 0),
+            ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",
                 parse("top_gap_distance", 0),
@@ -298,6 +312,7 @@ class ParameterPanel {
     _bindEvents() {
         const triggerChange = () => {
             if (this.onParamsPreview) this.onParamsPreview(this.getParams());
+            this._refreshActiveGuide();
             clearTimeout(this._debounceTimer);
             this._debounceTimer = setTimeout(() => {
                 if (this.onParamsChange) this.onParamsChange(this.getParams());
@@ -326,6 +341,10 @@ class ParameterPanel {
                 this._sync(key, "slider");
                 triggerChange();
             });
+
+            if (key === "capsule_axis_gap_distance") {
+                this._bindGuideEvents(key);
+            }
         }
 
         if (this.rayDirection) {
@@ -340,6 +359,51 @@ class ParameterPanel {
             this.togglePreview.addEventListener("change", () => {
                 if (this.onToggleChange) this.onToggleChange(this.getShowGenerated());
             });
+        }
+    }
+
+    _bindGuideEvents(key) {
+        const group = document.querySelector(`[data-param="${key}"]`);
+        const input = this.inputs[key];
+        const slider = this.sliders[key];
+        const show = () => this._setGuideVisible(key, true);
+        const hide = () => this._setGuideVisible(key, false);
+        const hideIfNotHovering = () => {
+            if (group && group.matches(":hover")) return;
+            hide();
+        };
+
+        if (group) {
+            group.addEventListener("mouseenter", show);
+            group.addEventListener("mouseleave", () => {
+                if (document.activeElement !== input) hide();
+            });
+        }
+        if (input) {
+            input.addEventListener("focus", show);
+            input.addEventListener("blur", hide);
+        }
+        if (slider) {
+            slider.addEventListener("pointerdown", show);
+            slider.addEventListener("pointerup", hideIfNotHovering);
+            slider.addEventListener("pointercancel", hide);
+        }
+    }
+
+    _setGuideVisible(key, visible) {
+        if (visible) {
+            this._activeGuideKey = key;
+        } else if (this._activeGuideKey === key) {
+            this._activeGuideKey = null;
+        }
+        if (this.onGuideChange) {
+            this.onGuideChange(key, Boolean(visible), this.getParams());
+        }
+    }
+
+    _refreshActiveGuide() {
+        if (this._activeGuideKey && this.onGuideChange) {
+            this.onGuideChange(this._activeGuideKey, true, this.getParams());
         }
     }
 }

@@ -37,6 +37,8 @@
 #generated-layer,
 #selected-chain-path,
 .symmetry-axis-line,
+.capsule-gap-guide-line,
+#default-apex-marker,
 #local-hover-visual-layer {
     pointer-events: none;
 }
@@ -55,6 +57,11 @@
 
 .symmetry-axis-line {
     filter: drop-shadow(0 0 4px rgba(255, 92, 92, 0.5));
+}
+
+.capsule-gap-guide-line,
+#default-apex-marker {
+    filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.7));
 }
 
 #dxf-content [data-handle].local-hover-highlight,
