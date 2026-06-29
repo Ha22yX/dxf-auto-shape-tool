@@ -335,6 +335,7 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
+        const capsuleClearance = Math.max(0, Number(params.capsule_clearance_distance || 0)) * svgScale;
         const aboveAxisGap = Math.max(0, Number(params.capsule_axis_gap_above_distance || 0)) * svgScale;
         const belowAxisGap = Math.max(0, Number(params.capsule_axis_gap_below_distance || 0)) * svgScale;
         const horizontalAxis = baseGeometry.symmetry_axes && baseGeometry.symmetry_axes.horizontal;
@@ -391,6 +392,7 @@ class SvgViewer {
             aboveAxisGap,
             belowAxisGap,
             verticalAxisX,
+            capsuleClearance,
         );
         const capsules = this._capsulesFromKeptCircles(
             source,
@@ -418,6 +420,7 @@ class SvgViewer {
         aboveAxisGap = 0,
         belowAxisGap = 0,
         axisX = null,
+        clearance = 0,
     ) {
         const groups = new Map();
         for (const circle of keptCircles) {
@@ -492,7 +495,7 @@ class SvgViewer {
         if (!circles.length || radius <= 0) {
             return { kept: circles, removed: [] };
         }
-        const minDistance = radius * 2 - 0.01;
+        const minDistance = radius * 2 + Math.max(0, clearance) - 0.01;
         const minDistanceSq = minDistance * minDistance;
         const cellSize = Math.max(radius * 2, 1);
         const cells = new Map();

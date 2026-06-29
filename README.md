@@ -52,6 +52,7 @@ The right-side parameter panel is grouped by purpose.
 ### Slots and Gaps
 
 - `Capsule Start Distance`: position of the capsule slot end near the ray origin.
+- `Capsule Clearance Distance`: extra safe spacing between capsule slots. If two slots are closer than this threshold allows, the tool shortens only one slot from its outermost hole, while preserving mirrored removal when a symmetry axis is available.
 - `No Slot Distance Above Horizontal Axis`: omits capsule slots within this distance above the horizontal symmetry axis.
 - `No Slot Distance Below Horizontal Axis`: omits capsule slots within this distance below the horizontal symmetry axis.
 - `Top Gap`: distance around the apex where rays are not generated, helping both sides stay symmetric.

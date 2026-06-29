@@ -535,7 +535,11 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
         sum(item["center"].x for item in items) / len(items)
     )
 
-    groups = _mirror_groups(items, axis_center_x, params.circle_radius)
+    groups = (
+        _mirror_groups(items, axis_center_x, params.circle_radius)
+        if axis
+        else [[item["id"]] for item in items]
+    )
     item_to_group = {}
     for group_index, ids in enumerate(groups):
         for item_id in ids:
@@ -547,6 +551,7 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
         for ids in groups
     ]
     removed_ids = set()
+    capsule_removed_ids = set()
     min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
 
     while True:
@@ -645,6 +650,7 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
 
         loser_group, loser_ids = max(candidate_groups, key=removal_key)
         removed_ids.update(loser_ids)
+        capsule_removed_ids.update(loser_ids)
 
     kept_ids = {item["id"] for item in items if item["id"] not in removed_ids}
     for item in sorted(
@@ -654,6 +660,8 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
     ):
         item_id = item["id"]
         if item_id in kept_ids:
+            continue
+        if item_id in capsule_removed_ids:
             continue
         overlaps_kept = any(
             (item["center"] - by_id[kept_id]["center"]).magnitude < min_distance
@@ -691,7 +699,12 @@ def _overlap_pruned_circle_items(doc, chain, params, placements):
                 -item_id,
             ),
         )
-        kept_ids.remove(loser)
+        loser_group = item_to_group.get(loser)
+        if loser_group is None:
+            kept_ids.remove(loser)
+        else:
+            for item_id in groups[loser_group]:
+                kept_ids.discard(item_id)
 
     kept = []
     removed = []
@@ -740,7 +753,8 @@ def _best_capsule_conflict(placements, params, axis, active_items):
     if len(capsules) <= 1:
         return None
 
-    min_distance = max(0.0, params.circle_radius * 2.0 - POINT_TOLERANCE)
+    clearance = max(0.0, getattr(params, "capsule_clearance_distance", 0.0))
+    min_distance = max(0.0, params.circle_radius * 2.0 + clearance - POINT_TOLERANCE)
     best_conflict = None
     for i, first in enumerate(capsules):
         first_capsule = first["capsule"]

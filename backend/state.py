@@ -14,6 +14,7 @@ class CircleParams:
     circle_spacing: float = DEFAULT_PARAMS["circle_spacing"]
     ray_offset: float = DEFAULT_PARAMS["ray_offset"]
     capsule_start_distance: float = DEFAULT_PARAMS["capsule_start_distance"]
+    capsule_clearance_distance: float = DEFAULT_PARAMS["capsule_clearance_distance"]
     capsule_axis_gap_above_distance: float = DEFAULT_PARAMS["capsule_axis_gap_above_distance"]
     capsule_axis_gap_below_distance: float = DEFAULT_PARAMS["capsule_axis_gap_below_distance"]
     top_gap_distance: float = DEFAULT_PARAMS["top_gap_distance"]
@@ -36,6 +37,10 @@ class CircleParams:
             circle_spacing=float(data.get("circle_spacing", DEFAULT_PARAMS["circle_spacing"])),
             ray_offset=ray_offset,
             capsule_start_distance=capsule_start_distance,
+            capsule_clearance_distance=max(0.0, float(data.get(
+                "capsule_clearance_distance",
+                DEFAULT_PARAMS["capsule_clearance_distance"],
+            ))),
             capsule_axis_gap_above_distance=max(0.0, float(data.get(
                 "capsule_axis_gap_above_distance",
                 legacy_axis_gap,
@@ -57,6 +62,7 @@ class CircleParams:
             "circle_spacing": self.circle_spacing,
             "ray_offset": self.ray_offset,
             "capsule_start_distance": self.capsule_start_distance,
+            "capsule_clearance_distance": self.capsule_clearance_distance,
             "capsule_axis_gap_above_distance": self.capsule_axis_gap_above_distance,
             "capsule_axis_gap_below_distance": self.capsule_axis_gap_below_distance,
             "top_gap_distance": self.top_gap_distance,

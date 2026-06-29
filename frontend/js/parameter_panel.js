@@ -49,6 +49,14 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
+            capsule_clearance_distance: {
+                min: 0,
+                max: 99999,
+                sliderMin: 0,
+                sliderMax: 100,
+                step: 0.5,
+                decimals: 1,
+            },
             capsule_axis_gap_above_distance: {
                 min: 0,
                 max: 99999,
@@ -271,6 +279,10 @@ class ParameterPanel {
             capsule_start_distance: this._normalizeInputValue(
                 "capsule_start_distance",
                 parse("capsule_start_distance", 0.1),
+            ),
+            capsule_clearance_distance: this._normalizeInputValue(
+                "capsule_clearance_distance",
+                parse("capsule_clearance_distance", 0),
             ),
             capsule_axis_gap_above_distance: this._normalizeInputValue(
                 "capsule_axis_gap_above_distance",

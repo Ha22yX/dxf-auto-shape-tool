@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260629-param-sections">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-param-sections">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260629-capsule-clearance">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-capsule-clearance">
 </head>
 <body>
     <div class="app">
@@ -128,6 +128,18 @@
                         <div class="slider-hints"><span>0.1</span><span id="capsule-start-mid-hint">37.5</span><span id="capsule-start-max-hint">75</span></div>
                     </div>
 
+                    <div class="form-group slider-group" data-param="capsule_clearance_distance">
+                        <div class="slider-header">
+                            <label>胶囊安全间距</label>
+                            <div class="input-with-unit">
+                                <input type="text" inputmode="decimal" id="param-capsule-clearance-distance" value="0" data-step="0.5" data-min="0" data-max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-capsule-clearance-distance-slider" min="0" max="100" step="0.5" value="0">
+                        <div class="slider-hints"><span>0</span><span>50</span><span>100</span></div>
+                    </div>
+
                     <div class="form-group slider-group" data-param="capsule_axis_gap_above_distance">
                         <div class="slider-header">
                             <label>水平轴上方无长条距离</label>
@@ -196,11 +208,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260629-param-sections"></script>
-    <script src="/static/js/websocket.js?v=20260629-param-sections"></script>
-    <script src="/static/js/svg_viewer.js?v=20260629-param-sections"></script>
-    <script src="/static/js/selector.js?v=20260629-param-sections"></script>
-    <script src="/static/js/parameter_panel.js?v=20260629-param-sections"></script>
-    <script src="/static/js/app.js?v=20260629-param-sections"></script>
+    <script src="/static/js/api.js?v=20260629-capsule-clearance"></script>
+    <script src="/static/js/websocket.js?v=20260629-capsule-clearance"></script>
+    <script src="/static/js/svg_viewer.js?v=20260629-capsule-clearance"></script>
+    <script src="/static/js/selector.js?v=20260629-capsule-clearance"></script>
+    <script src="/static/js/parameter_panel.js?v=20260629-capsule-clearance"></script>
+    <script src="/static/js/app.js?v=20260629-capsule-clearance"></script>
 </body>
 </html>
