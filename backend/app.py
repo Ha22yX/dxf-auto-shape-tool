@@ -151,7 +151,9 @@ def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -
     chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
     state.selected_chain = chain
     state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
-    state.manual_apex_distance = None
+    axis = geometry_utils.estimate_chain_symmetry_axis(state.working_doc, chain)
+    apex = geometry_utils.top_axis_sample_on_chain(state.working_doc, chain, axis)
+    state.manual_apex_distance = apex.distance if apex is not None else None
     return True
 
 

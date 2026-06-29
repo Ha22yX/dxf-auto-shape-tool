@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Tuple, List, Callable, Optional
 from ezdxf.math import Vec2, Vec3, bulge_to_arc
 
+from backend.config import POINT_TOLERANCE
+
 
 # ---------------------------------------------------------------------------
 # Vector helpers
@@ -589,7 +591,7 @@ def estimate_chain_symmetry_axis(doc, chain: List[str], sample_count: Optional[i
     }
 
 
-def nearest_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):
+def top_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):
     total = chain_length(doc, chain)
     if total <= 1e-9 or not axis:
         return None
@@ -600,10 +602,24 @@ def nearest_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Opti
     samples = sample_chain(doc, chain, sample_count, closed=False)
     if not samples:
         return None
-    return min(
-        samples,
-        key=lambda sample: _distance_to_axis(sample.point, axis["center"], axis["normal"]),
-    )
+    distances = [
+        _distance_to_axis(sample.point, axis["center"], axis["normal"])
+        for sample in samples
+    ]
+    best_distance = min(distances)
+    axis_window = max(POINT_TOLERANCE, total / max(sample_count, 1) * 2.0)
+    candidates = [
+        sample
+        for sample, distance in zip(samples, distances)
+        if distance <= best_distance + axis_window
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda sample: sample.point.y)
+
+
+def nearest_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):
+    return top_axis_sample_on_chain(doc, chain, axis, sample_count=sample_count)
 
 
 def snapped_apex_sample_on_chain(doc, chain: List[str], point: Vec2,
@@ -620,7 +636,7 @@ def snapped_apex_sample_on_chain(doc, chain: List[str], point: Vec2,
 
     nearest = nearest_sample_on_chain(doc, chain, point)
     axis = estimate_chain_symmetry_axis(doc, chain)
-    axis_sample = nearest_axis_sample_on_chain(doc, chain, axis) if axis else None
+    axis_sample = top_axis_sample_on_chain(doc, chain, axis) if axis else None
     if nearest is None or axis is None or axis_sample is None:
         return nearest
 

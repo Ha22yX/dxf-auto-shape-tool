@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ezdxf
 from ezdxf.math import Vec2
 from fastapi import UploadFile
-from backend.app import upload_dxf
+from backend.app import upload_dxf, _apply_selection
 from backend.config import DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
@@ -300,6 +300,40 @@ def test_symmetry_axis_snaps_manual_apex_to_center_crossing():
 
     assert sample is not None
     assert (sample.point - Vec2(10, 10)).magnitude < 0.1
+
+
+def test_symmetry_axis_default_uses_topmost_crossing():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0), (10, 20), (0, 0)], close=False)
+    axis = geometry_utils.estimate_chain_symmetry_axis(doc, [poly.dxf.handle])
+
+    sample = geometry_utils.top_axis_sample_on_chain(doc, [poly.dxf.handle], axis)
+
+    assert sample is not None
+    assert (sample.point - Vec2(10, 20)).magnitude < 0.2
+
+
+def test_selection_sets_default_apex_to_top_axis_crossing():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0), (10, 20), (0, 0)], close=False)
+    state = SessionState(
+        session_id="test",
+        original_doc=doc,
+        working_doc=doc,
+    )
+
+    changed = _apply_selection(state, poly.dxf.handle, append=False)
+    sample = geometry_utils.sample_chain_at_distances(
+        doc,
+        [poly.dxf.handle],
+        [state.manual_apex_distance],
+    )[0]
+
+    assert changed is True
+    assert state.manual_apex_distance is not None
+    assert (sample.point - Vec2(10, 20)).magnitude < 0.2
 
 
 def test_preview_returns_symmetry_axis_overlay():
