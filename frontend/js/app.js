@@ -9,8 +9,6 @@ const App = {
     sessionId: null,
     bounds: null,
     scale: 1,
-    hoverInFlight: false,
-    hoverTimeout: null,
     apexPickMode: false,
 
     init() {
@@ -85,12 +83,6 @@ const App = {
 
         svgViewer.onHover = (evt) => {
             if (!this.sessionId) return;
-            if (this.hoverInFlight) return;
-            this.hoverInFlight = true;
-            clearTimeout(this.hoverTimeout);
-            this.hoverTimeout = setTimeout(() => {
-                this.hoverInFlight = false;
-            }, 1500);
             wsClient.sendHover(evt.svgX, evt.svgY, evt.tol, evt.requestId);
         };
     },
@@ -208,9 +200,6 @@ const App = {
     },
 
     _completeHoverRequest(requestId) {
-        this.hoverInFlight = false;
-        clearTimeout(this.hoverTimeout);
-        this.hoverTimeout = null;
     },
 
     _setApexPickMode(active) {

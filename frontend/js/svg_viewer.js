@@ -351,17 +351,17 @@ class SvgViewer {
         this.onMouseMove({ x: pt.x, y: pt.y });
         this._lastHoverPoint = pt;
         if (!this.onHover || this.isPanning) return;
-        if (this._hoverThrottle) return;
-        this._hoverThrottle = window.setTimeout(() => {
+        if (this._hoverThrottle) window.cancelAnimationFrame(this._hoverThrottle);
+        this._hoverThrottle = window.requestAnimationFrame(() => {
             this._hoverThrottle = null;
             if (!this._lastHoverPoint || !this.onHover) return;
             this.onHover({
                 requestId: ++this._hoverRequestId,
                 svgX: this._lastHoverPoint.x,
                 svgY: this._lastHoverPoint.y,
-                tol: 4 * this.wcsPerPixel(),
+                tol: 7 * this.wcsPerPixel(),
             });
-        }, 60);
+        });
     }
 }
 
