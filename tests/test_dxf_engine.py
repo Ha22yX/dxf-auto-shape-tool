@@ -321,6 +321,12 @@ def test_preview_returns_symmetry_axis_overlay():
     assert axis is not None
     assert abs(axis["x1"] - 10) < 0.2
     assert abs(axis["x2"] - 10) < 0.2
+    assert abs(axis["y1"] - axis["y2"]) > 10
+
+    snap = preview["symmetry_snap_point"]
+    assert snap is not None
+    assert abs(snap["cx"] - 10) < 0.2
+    assert abs(snap["cy"] - 0) < 0.2
 
 
 def test_preview_returns_manual_apex_marker():

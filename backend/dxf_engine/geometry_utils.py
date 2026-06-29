@@ -544,12 +544,7 @@ def _distance_square(a: Vec2, b: Vec2) -> float:
 
 
 def estimate_chain_symmetry_axis(doc, chain: List[str], sample_count: Optional[int] = None):
-    """Estimate the left/right symmetry axis of a selected chain.
-
-    The axis passes through the sampled centroid. Its direction is chosen by
-    minimizing reflection error: points reflected across the candidate axis
-    should land close to the original point cloud.
-    """
+    """Estimate the vertical left/right symmetry axis of a selected chain."""
     total = chain_length(doc, chain)
     if total <= 1e-9:
         return None
@@ -564,49 +559,34 @@ def estimate_chain_symmetry_axis(doc, chain: List[str], sample_count: Optional[i
         return None
 
     points = [s.point for s in samples]
-    center = Vec2(
-        sum(p.x for p in points) / len(points),
-        sum(p.y for p in points) / len(points),
-    )
+    min_x = min(p.x for p in points)
+    max_x = max(p.x for p in points)
+    min_y = min(p.y for p in points)
+    max_y = max(p.y for p in points)
+    center_x = (min_x + max_x) / 2.0
+    center_y = (min_y + max_y) / 2.0
+    height = max_y - min_y
+    width = max_x - min_x
+    margin = max(height * 0.35, width * 0.25, total * 0.08, 1.0)
+    center = Vec2(center_x, center_y)
+    direction = Vec2(0, 1)
+    normal = Vec2(1, 0)
 
-    best = None
-    # One-degree steps are stable enough for display and snapping while keeping
-    # slider-driven preview updates responsive.
-    for step in range(180):
-        angle = math.pi * step / 180.0
-        direction = Vec2(math.cos(angle), math.sin(angle))
-        normal = Vec2(-direction.y, direction.x)
-        error = 0.0
+    error = 0.0
+    for point in points:
+        reflected = Vec2(2.0 * center_x - point.x, point.y)
+        error += min(_distance_square(reflected, other) for other in points)
 
-        for point in points:
-            delta = point - center
-            reflected = point - normal * (2.0 * _dot(delta, normal))
-            nearest_sq = min(_distance_square(reflected, other) for other in points)
-            error += nearest_sq
-
-        if best is None or error < best["error"]:
-            best = {
-                "center": center,
-                "direction": direction,
-                "normal": normal,
-                "error": error / len(points),
-                "points": points,
-            }
-
-    if best is None:
-        return None
-
-    projections = [_dot(point - best["center"], best["direction"]) for point in points]
-    across = [_dot(point - best["center"], best["normal"]) for point in points]
-    length = max(projections) - min(projections)
-    width = max(across) - min(across)
-    diagonal = math.hypot(length, width)
-    margin = max(diagonal * 0.35, total * 0.08, 1.0)
-
-    best["start"] = best["center"] + best["direction"] * (min(projections) - margin)
-    best["end"] = best["center"] + best["direction"] * (max(projections) + margin)
-    best["distance_error"] = math.sqrt(max(best["error"], 0.0))
-    return best
+    return {
+        "center": center,
+        "direction": direction,
+        "normal": normal,
+        "error": error / len(points),
+        "distance_error": math.sqrt(max(error / len(points), 0.0)),
+        "points": points,
+        "start": Vec2(center_x, min_y - margin),
+        "end": Vec2(center_x, max_y + margin),
+    }
 
 
 def nearest_axis_sample_on_chain(doc, chain: List[str], axis, sample_count: Optional[int] = None):

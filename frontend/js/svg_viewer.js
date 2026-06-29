@@ -42,6 +42,8 @@ class SvgViewer {
 
         this.onClick = null;
         this.onMouseMove = null;
+        this.apexPickMode = false;
+        this.symmetrySnapPoint = null;
 
         this._bindEvents();
     }
@@ -89,7 +91,10 @@ class SvgViewer {
 
         this.svg.addEventListener("click", (e) => this._handleClick(e));
         this.svg.addEventListener("mousemove", (e) => this._handleMouseMove(e));
-        this.svg.addEventListener("mouseleave", () => this.clearHover());
+        this.svg.addEventListener("mouseleave", () => {
+            this.clearHover();
+            this._setSnapPreviewActive(false);
+        });
 
         this.scale = 1;
         this.translateX = 0;
@@ -141,6 +146,8 @@ class SvgViewer {
         if (oldApex) oldApex.remove();
         const oldAxis = this.overlay.querySelector("#symmetry-axis-line");
         if (oldAxis) oldAxis.remove();
+        const oldSnap = this.overlay.querySelector("#symmetry-snap-marker");
+        if (oldSnap) oldSnap.remove();
         const d = geometry.selected_chain_path;
         if (d) {
             const path = document.createElementNS(SVG_NS, "path");
@@ -169,6 +176,46 @@ class SvgViewer {
             line.setAttribute("vector-effect", "non-scaling-stroke");
             line.setAttribute("pointer-events", "none");
             this.overlay.insertBefore(line, this.generatedLayer);
+        }
+
+        this.symmetrySnapPoint = geometry.symmetry_snap_point || null;
+        if (this.symmetrySnapPoint) {
+            const snap = this.symmetrySnapPoint;
+            const group = document.createElementNS(SVG_NS, "g");
+            group.setAttribute("id", "symmetry-snap-marker");
+            group.setAttribute("pointer-events", "none");
+
+            const ring = document.createElementNS(SVG_NS, "circle");
+            ring.setAttribute("cx", snap.cx.toFixed(1));
+            ring.setAttribute("cy", snap.cy.toFixed(1));
+            ring.setAttribute("r", snap.r.toFixed(1));
+            ring.setAttribute("fill", "rgba(255, 92, 92, 0.18)");
+            ring.setAttribute("stroke", "#FF5C5C");
+            ring.setAttribute("stroke-width", "2.4");
+            ring.setAttribute("vector-effect", "non-scaling-stroke");
+
+            const crossH = document.createElementNS(SVG_NS, "line");
+            crossH.setAttribute("x1", (snap.cx - snap.r - 4).toFixed(1));
+            crossH.setAttribute("y1", snap.cy.toFixed(1));
+            crossH.setAttribute("x2", (snap.cx + snap.r + 4).toFixed(1));
+            crossH.setAttribute("y2", snap.cy.toFixed(1));
+            crossH.setAttribute("stroke", "#FF5C5C");
+            crossH.setAttribute("stroke-width", "1.8");
+            crossH.setAttribute("vector-effect", "non-scaling-stroke");
+
+            const crossV = document.createElementNS(SVG_NS, "line");
+            crossV.setAttribute("x1", snap.cx.toFixed(1));
+            crossV.setAttribute("y1", (snap.cy - snap.r - 4).toFixed(1));
+            crossV.setAttribute("x2", snap.cx.toFixed(1));
+            crossV.setAttribute("y2", (snap.cy + snap.r + 4).toFixed(1));
+            crossV.setAttribute("stroke", "#FF5C5C");
+            crossV.setAttribute("stroke-width", "1.8");
+            crossV.setAttribute("vector-effect", "non-scaling-stroke");
+
+            group.appendChild(ring);
+            group.appendChild(crossH);
+            group.appendChild(crossV);
+            this.overlay.insertBefore(group, this.generatedLayer);
         }
 
         const marker = geometry.apex_marker;
@@ -200,7 +247,11 @@ class SvgViewer {
     }
 
     setApexPickMode(active) {
-        this.container.classList.toggle("is-picking-apex", Boolean(active));
+        this.apexPickMode = Boolean(active);
+        this.container.classList.toggle("is-picking-apex", this.apexPickMode);
+        if (!this.apexPickMode) {
+            this._setSnapPreviewActive(false);
+        }
     }
 
     resetView() {
@@ -284,6 +335,14 @@ class SvgViewer {
         pt.x = clientX;
         pt.y = clientY;
         return pt.matrixTransform(this.svg.getScreenCTM().inverse());
+    }
+
+    svgPointToClient(svgX, svgY) {
+        if (!this.svg) return { x: svgX, y: svgY };
+        const pt = this.svg.createSVGPoint();
+        pt.x = svgX * this.scale + this.translateX;
+        pt.y = svgY * this.scale + this.translateY;
+        return pt.matrixTransform(this.svg.getScreenCTM());
     }
 
     /**
@@ -404,6 +463,23 @@ class SvgViewer {
         this.onMouseMove({ x: pt.x, y: pt.y });
         if (this.isPanning) return;
         this.setLocalHoverElement(this._localHoverTarget(e));
+        this._updateApexSnapPreview(e);
+    }
+
+    _setSnapPreviewActive(active) {
+        const marker = this.overlay ? this.overlay.querySelector("#symmetry-snap-marker") : null;
+        if (!marker) return;
+        marker.classList.toggle("is-active", Boolean(active));
+    }
+
+    _updateApexSnapPreview(e) {
+        if (!this.apexPickMode || !this.symmetrySnapPoint) {
+            this._setSnapPreviewActive(false);
+            return;
+        }
+        const client = this.svgPointToClient(this.symmetrySnapPoint.cx, this.symmetrySnapPoint.cy);
+        const distance = Math.hypot(client.x - e.clientX, client.y - e.clientY);
+        this._setSnapPreviewActive(distance <= 24);
     }
 }
 

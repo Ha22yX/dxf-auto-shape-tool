@@ -154,6 +154,15 @@ def _symmetry_axis_overlay(doc, chain, bounds, scale):
     return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
 
+def _symmetry_snap_point_overlay(doc, chain, bounds, scale):
+    axis = geom.estimate_chain_symmetry_axis(doc, chain)
+    sample = geom.nearest_axis_sample_on_chain(doc, chain, axis) if axis else None
+    if not sample:
+        return None
+    cx, cy = _to_svg(sample.point.x, sample.point.y, bounds, scale)
+    return {"cx": cx, "cy": cy, "r": 7.0}
+
+
 def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=None):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
@@ -285,6 +294,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "selected_chain_path": chain_path,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
+        "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
     }
 

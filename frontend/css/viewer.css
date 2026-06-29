@@ -41,7 +41,8 @@
 #generated-layer,
 #selected-chain-path,
 #manual-apex-marker,
-#symmetry-axis-line {
+#symmetry-axis-line,
+#symmetry-snap-marker {
     pointer-events: none;
 }
 
@@ -50,6 +51,15 @@
 }
 
 .svg-container.is-picking-apex #symmetry-axis-line {
+    display: block;
+}
+
+#symmetry-snap-marker {
+    display: none;
+    filter: drop-shadow(0 0 5px rgba(255, 92, 92, 0.95));
+}
+
+.svg-container.is-picking-apex #symmetry-snap-marker.is-active {
     display: block;
 }
 
