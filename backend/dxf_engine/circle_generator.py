@@ -288,6 +288,95 @@ def _distance_square(a: Vec2, b: Vec2):
     return delta.x * delta.x + delta.y * delta.y
 
 
+def _capsule_for_placement(placement, params):
+    if params.circle_radius <= 0 or params.circles_per_ray <= 0:
+        return None
+    normal = placement.get("normal", Vec2(0, 1))
+    if normal.magnitude <= 1e-9:
+        return None
+    direction = normal.normalize()
+    start_distance = getattr(params, "capsule_start_distance", 0.0)
+    near_center = placement["point"] + direction * start_distance
+    if placement["centers"]:
+        far_center = placement["centers"][-1]
+    else:
+        far_center = placement["point"] + direction * params.ray_offset
+    if (far_center - near_center).magnitude <= POINT_TOLERANCE:
+        return None
+    if (far_center - near_center).dot(direction) < 0:
+        near_center, far_center = far_center, near_center
+        direction = -direction
+    perp = Vec2(-direction.y, direction.x)
+    radius = params.circle_radius
+    return {
+        "near": near_center,
+        "far": far_center,
+        "direction": direction,
+        "perp": perp,
+        "radius": radius,
+    }
+
+
+def _capsule_svg_path(capsule, bounds, scale):
+    radius = capsule["radius"] * scale
+    near = capsule["near"]
+    far = capsule["far"]
+    perp = capsule["perp"] * capsule["radius"]
+
+    near_left = near + perp
+    far_left = far + perp
+    far_right = far - perp
+    near_right = near - perp
+
+    n_lx, n_ly = _to_svg(near_left.x, near_left.y, bounds, scale)
+    f_lx, f_ly = _to_svg(far_left.x, far_left.y, bounds, scale)
+    f_rx, f_ry = _to_svg(far_right.x, far_right.y, bounds, scale)
+    n_rx, n_ry = _to_svg(near_right.x, near_right.y, bounds, scale)
+
+    return (
+        f"M {n_lx:.1f} {n_ly:.1f} "
+        f"L {f_lx:.1f} {f_ly:.1f} "
+        f"A {radius:.1f} {radius:.1f} 0 0 1 {f_rx:.1f} {f_ry:.1f} "
+        f"L {n_rx:.1f} {n_ry:.1f} "
+        f"A {radius:.1f} {radius:.1f} 0 0 1 {n_lx:.1f} {n_ly:.1f} Z"
+    )
+
+
+def _angle_deg(vec: Vec2):
+    return math.degrees(math.atan2(vec.y, vec.x))
+
+
+def _add_capsule_entities(msp, capsule):
+    radius = capsule["radius"]
+    near = capsule["near"]
+    far = capsule["far"]
+    perp = capsule["perp"]
+    near_left = near + perp * radius
+    far_left = far + perp * radius
+    far_right = far - perp * radius
+    near_right = near - perp * radius
+
+    attrs = {"layer": GENERATED_LAYER}
+    handles = []
+    handles.append(msp.add_line((near_left.x, near_left.y), (far_left.x, far_left.y), dxfattribs=attrs).dxf.handle)
+    handles.append(msp.add_line((near_right.x, near_right.y), (far_right.x, far_right.y), dxfattribs=attrs).dxf.handle)
+    handles.append(msp.add_arc(
+        center=(far.x, far.y),
+        radius=radius,
+        start_angle=_angle_deg(-perp),
+        end_angle=_angle_deg(perp),
+        dxfattribs=attrs,
+    ).dxf.handle)
+    handles.append(msp.add_arc(
+        center=(near.x, near.y),
+        radius=radius,
+        start_angle=_angle_deg(perp),
+        end_angle=_angle_deg(-perp),
+        dxfattribs=attrs,
+    ).dxf.handle)
+    return handles
+
+
 def _mirror_groups(items, axis_center_x, radius):
     unused = {item["id"] for item in items}
     by_id = {item["id"]: item for item in items}
@@ -410,6 +499,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     removed_circles = []
     rays = []
     basis = []
+    capsules = []
     for p in placements:
         x, y = _to_svg(p["point"].x, p["point"].y, bounds, scale)
         basis.append({
@@ -418,6 +508,9 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
             "nx": p["normal"].x * scale,
             "ny": -p["normal"].y * scale,
         })
+        capsule = _capsule_for_placement(p, params)
+        if capsule:
+            capsules.append({"d": _capsule_svg_path(capsule, bounds, scale)})
     for item in kept_items:
         c = item["center"]
         cx, cy = _to_svg(c.x, c.y, bounds, scale)
@@ -450,6 +543,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "circles": circles,
         "removed_circles": removed_circles,
         "rays": rays,
+        "capsules": capsules,
         "basis": basis,
         "scale": scale,
         "selected_chain_path": chain_path,
@@ -520,5 +614,10 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
             dxfattribs={"layer": GENERATED_LAYER},
         )
         circle_handles.append(circle.dxf.handle)
+
+    for placement in placements:
+        capsule = _capsule_for_placement(placement, params)
+        if capsule:
+            _add_capsule_entities(msp, capsule)
 
     return circle_handles, []

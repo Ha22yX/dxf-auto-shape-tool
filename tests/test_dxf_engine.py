@@ -560,6 +560,60 @@ def test_preview_returns_basis_for_fast_frontend_redraw():
     assert {"x", "y", "nx", "ny"} <= set(preview["basis"][0])
 
 
+def test_preview_returns_capsule_paths_for_each_ray():
+    doc = make_rect_doc()
+    handle = next(e.dxf.handle for e in doc.modelspace())
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=3,
+        circle_spacing=5.0,
+        ray_offset=10.0,
+        capsule_start_distance=4.0,
+        ray_count=2,
+        ray_direction="outward",
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        [handle],
+        params,
+        closed=False,
+        bounds={"min": [0, -20], "max": [100, 80]},
+        scale=1.0,
+    )
+
+    assert len(preview["capsules"]) == 2
+    assert all("A 2.0 2.0" in capsule["d"] for capsule in preview["capsules"])
+
+
+def test_generate_circles_exports_capsule_outline_entities():
+    doc = ezdxf.new("R2010")
+    line = doc.modelspace().add_line((0, 0), (10, 0))
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=5.0,
+        ray_offset=3.0,
+        capsule_start_distance=1.0,
+        ray_count=1,
+        ray_direction="outward",
+    )
+
+    circle_handles, ray_handles = circle_generator.generate_circles(
+        doc,
+        [line.dxf.handle],
+        params,
+        closed=False,
+    )
+
+    generated = list(doc.modelspace().query('*[layer=="GENERATED_CIRCLES"]'))
+    assert len(circle_handles) == 2
+    assert ray_handles == []
+    assert sum(1 for entity in generated if entity.dxftype() == "CIRCLE") == 2
+    assert sum(1 for entity in generated if entity.dxftype() == "LINE") == 2
+    assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 2
+
+
 def test_open_chain_normals_do_not_flip_sides():
     doc = ezdxf.new("R2010")
     samples = [

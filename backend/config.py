@@ -19,6 +19,7 @@ DEFAULT_PARAMS = {
     "circles_per_ray": 3,
     "circle_spacing": 17.5,
     "ray_offset": 75.0,
+    "capsule_start_distance": 0.0,
     "top_gap_distance": 0.0,
     "ray_count": 200,
     "ray_direction": "outward",  # "inward" or "outward"

@@ -41,6 +41,14 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
+            capsule_start_distance: {
+                min: -99999,
+                max: 99999,
+                sliderMin: -500,
+                sliderMax: 500,
+                step: 0.5,
+                decimals: 1,
+            },
             top_gap_distance: {
                 min: 0,
                 max: 99999,
@@ -198,6 +206,10 @@ class ParameterPanel {
             ray_offset: this._normalizeInputValue(
                 "ray_offset",
                 parse("ray_offset", 75),
+            ),
+            capsule_start_distance: this._normalizeInputValue(
+                "capsule_start_distance",
+                parse("capsule_start_distance", 0),
             ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",

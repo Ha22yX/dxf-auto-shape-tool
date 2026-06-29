@@ -139,6 +139,20 @@ class SvgViewer {
         if (!this.generatedLayer) return;
         this.generatedLayer.innerHTML = "";
         this.generatedLayer.style.display = showGenerated ? "" : "none";
+        const capsules = geometry.capsules || [];
+        for (const c of capsules) {
+            if (!c.d) continue;
+            const path = document.createElementNS(SVG_NS, "path");
+            path.setAttribute("d", c.d);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", "#E8E8E8");
+            path.setAttribute("stroke-width", "1.4");
+            path.setAttribute("stroke-opacity", "0.92");
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            path.setAttribute("vector-effect", "non-scaling-stroke");
+            this.generatedLayer.appendChild(path);
+        }
         const rays = geometry.rays || [];
         for (const r of rays) {
             const line = document.createElementNS(SVG_NS, "line");
@@ -309,9 +323,11 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
+        const capsuleStart = Number(params.capsule_start_distance || 0) * svgScale;
         const source = basis.slice(0, rayCount);
         const allCircles = [];
         const rays = [];
+        const capsules = [];
 
         for (const b of source) {
             let nx = Number(b.nx || 0);
@@ -321,6 +337,7 @@ class SvgViewer {
             nx /= mag;
             ny /= mag;
             const rayEndDistance = offset + Math.max(0, circlesPerRay - 1) * spacing;
+            capsules.push(this._capsulePathFromRayBasis(b, nx, ny, capsuleStart, rayEndDistance, radius));
             rays.push({
                 x1: b.x,
                 y1: b.y,
@@ -340,8 +357,39 @@ class SvgViewer {
         const pruned = this._quickPruneOverlaps(allCircles, radius);
         return {
             rays,
+            capsules,
             circles: pruned.kept,
             removed_circles: pruned.removed,
+        };
+    }
+
+    _capsulePathFromRayBasis(base, nx, ny, nearDistance, farDistance, radius) {
+        if (radius <= 0 || Math.abs(farDistance - nearDistance) <= 1e-6) {
+            return null;
+        }
+        if (farDistance < nearDistance) {
+            const swap = nearDistance;
+            nearDistance = farDistance;
+            farDistance = swap;
+            nx = -nx;
+            ny = -ny;
+        }
+        const px = -ny;
+        const py = nx;
+        const nearX = base.x + nx * nearDistance;
+        const nearY = base.y + ny * nearDistance;
+        const farX = base.x + nx * farDistance;
+        const farY = base.y + ny * farDistance;
+        const nearLeft = { x: nearX + px * radius, y: nearY + py * radius };
+        const farLeft = { x: farX + px * radius, y: farY + py * radius };
+        const farRight = { x: farX - px * radius, y: farY - py * radius };
+        const nearRight = { x: nearX - px * radius, y: nearY - py * radius };
+        return {
+            d: `M ${nearLeft.x.toFixed(1)} ${nearLeft.y.toFixed(1)} `
+                + `L ${farLeft.x.toFixed(1)} ${farLeft.y.toFixed(1)} `
+                + `A ${radius.toFixed(1)} ${radius.toFixed(1)} 0 0 1 ${farRight.x.toFixed(1)} ${farRight.y.toFixed(1)} `
+                + `L ${nearRight.x.toFixed(1)} ${nearRight.y.toFixed(1)} `
+                + `A ${radius.toFixed(1)} ${radius.toFixed(1)} 0 0 1 ${nearLeft.x.toFixed(1)} ${nearLeft.y.toFixed(1)} Z`,
         };
     }
 
