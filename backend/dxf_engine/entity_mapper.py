@@ -1,40 +1,98 @@
 """Map SVG click coordinates back to DXF entity handles."""
 import math
 from typing import Optional
-from ezdxf.math import Vec2, Vec3, Matrix44
+from ezdxf.math import Vec2
 
 from backend.state import SessionState
-from backend.config import CLICK_TOLERANCE_PIXELS
 from backend.dxf_engine import geometry_utils as geom
 from backend.dxf_engine import svg_exporter
 
+EDGE_TYPES = ("LINE", "ARC", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ELLIPSE", "SPLINE")
 
-def find_nearest_entity(state: SessionState, svg_x: float, svg_y: float) -> Optional[str]:
+
+def entity_to_svg_path(state: SessionState, handle: str) -> str:
+    """Build an SVG path 'd' string for a single entity in base-SVG output units.
+
+    Used for hover highlighting so the frontend can render an overlay path
+    that exactly matches the entity in the base SVG.
     """
-    Find the nearest edge entity to a click given in base-SVG output units.
-    Returns entity handle or None.
+    entity = state.working_doc.entitydb.get(handle)
+    if entity is None:
+        return ""
+
+    dtype = entity.dxftype()
+    length = geom.entity_length(entity)
+    num = max(16, min(500, int(length / 1.0))) if length > 0 else 32
+
+    closed = False
+    if dtype == "CIRCLE":
+        closed = True
+    elif dtype == "LWPOLYLINE" and entity.closed:
+        closed = True
+    elif dtype == "POLYLINE" and entity.is_closed:
+        closed = True
+
+    samples = geom.sample_chain(state.working_doc, [handle], num, closed=closed)
+    if not samples:
+        return ""
+
+    parts = []
+    for i, s in enumerate(samples):
+        sx, sy = svg_exporter.wcs_to_svg(
+            s.point.x, s.point.y, state.svg_bounds, state.svg_scale
+        )
+        cmd = "M" if i == 0 else "L"
+        parts.append(f"{cmd} {sx:.1f} {sy:.1f}")
+    if closed:
+        parts.append("Z")
+    return " ".join(parts)
+
+
+def find_nearest_entity(state: SessionState, svg_x: float, svg_y: float,
+                        tol: Optional[float] = None) -> Optional[str]:
+    """Find the nearest edge entity to a click given in base-SVG output units.
+
+    ``tol`` is an optional pick tolerance already expressed in WCS units
+    (e.g. a fixed pixel aperture converted by the frontend). When omitted a
+    fraction-of-drawing fallback is used. A cached bounding-box prefilter keeps
+    this fast on large drawings (avoids flattening every spline per click).
     """
     wcs_x, wcs_y = svg_exporter.svg_to_wcs(
         svg_x, svg_y, state.svg_bounds, state.svg_scale
     )
     wcs_point = Vec2(wcs_x, wcs_y)
 
-    # Adaptive tolerance in WCS units, derived from the drawing size.
     bounds = state.svg_bounds
     size = max(
         bounds["max"][0] - bounds["min"][0],
         bounds["max"][1] - bounds["min"][1],
         1.0,
     )
-    tolerance = max(size * 0.005, 1e-3)
+    fallback_tol = max(size * 0.005, 1e-3)
+    # Older front-end builds sent an inverted pixel-to-WCS value that was almost
+    # zero. Treat only impossible/absurdly tiny tolerances as missing; otherwise
+    # trust the screen-pixel aperture from the viewer.
+    if tol is None or tol <= 0 or tol < max(size * 1e-7, 1e-9):
+        tol = fallback_tol
+    tolerance = max(tol, 1e-9)
+
+    bbox_cache = _get_bbox_cache(state)
 
     best_handle = None
     best_distance = float("inf")
 
     for entity in state.working_doc.modelspace():
         dtype = entity.dxftype()
-        if dtype not in ("LINE", "ARC", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ELLIPSE", "SPLINE"):
+        if dtype not in EDGE_TYPES:
             continue
+
+        # Bounding-box prefilter: skip entities that cannot be within tolerance.
+        bb = _cached_bbox(entity, bbox_cache)
+        if bb is not None:
+            (mnx, mny, mxx, mxy) = bb
+            if (wcs_x < mnx - tolerance or wcs_x > mxx + tolerance or
+                    wcs_y < mny - tolerance or wcs_y > mxy + tolerance):
+                continue
 
         dist, _, _ = geom.point_entity_distance(wcs_point, entity)
         if dist < tolerance and dist < best_distance:
@@ -44,67 +102,29 @@ def find_nearest_entity(state: SessionState, svg_x: float, svg_y: float) -> Opti
     return best_handle
 
 
-def _doc_bounds(doc) -> tuple:
-    min_x, min_y = float("inf"), float("inf")
-    max_x, max_y = float("-inf"), float("-inf")
-    for entity in doc.modelspace():
-        pts = _entity_points(entity)
-        for p in pts:
-            min_x = min(min_x, p.x)
-            min_y = min(min_y, p.y)
-            max_x = max(max_x, p.x)
-            max_y = max(max_y, p.y)
-    if not math.isfinite(min_x):
-        return (0, 0, 100, 100)
-    return (min_x, min_y, max_x, max_y)
+def _get_bbox_cache(state: SessionState) -> dict:
+    cache = getattr(state, "_entity_bbox_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(state, "_entity_bbox_cache", cache)
+    return cache
 
 
-def _entity_points(entity) -> list:
-    dtype = entity.dxftype()
-    if dtype == "LINE":
-        return [Vec2(entity.dxf.start.x, entity.dxf.start.y), Vec2(entity.dxf.end.x, entity.dxf.end.y)]
-    if dtype in ("ARC", "CIRCLE"):
-        center = geom.vec2_from_vec3(entity.dxf.center)
-        r = entity.dxf.radius
-        pts = []
-        for i in range(8):
-            a = 2 * math.pi * i / 8
-            pts.append(Vec2(center.x + r * math.cos(a), center.y + r * math.sin(a)))
-        return pts
-    if dtype == "LWPOLYLINE":
-        pts = list(entity.get_points(format="xy"))
-        return [Vec2(p[0], p[1]) for p in pts]
-    if dtype == "POLYLINE":
-        try:
-            return [Vec2(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
-        except Exception:
-            return []
-    if dtype == "ELLIPSE":
-        try:
-            center = geom.vec2_from_vec3(entity.dxf.center)
-            major_axis = geom.vec2_from_vec3(entity.dxf.major_axis)
-            ratio = entity.dxf.ratio
-            start = entity.dxf.start_param
-            end = entity.dxf.end_param
-            pts = []
-            for i in range(8):
-                t = start + (end - start) * (i / 7)
-                x = center.x + major_axis.x * math.cos(t) * ratio + (-major_axis.y) * math.sin(t)
-                y = center.y + major_axis.y * math.cos(t) * ratio + major_axis.x * math.sin(t)
-                pts.append(Vec2(x, y))
-            return pts
-        except Exception:
-            return []
-    if dtype == "SPLINE":
-        try:
-            pts = list(entity.flattening(distance=1.0))
-            return [Vec2(p.x, p.y) for p in pts]
-        except Exception:
-            return []
-    return []
+def _cached_bbox(entity, cache: dict):
+    key = entity.dxf.handle
+    if key in cache:
+        return cache[key]
+    value = _entity_bbox(entity)
+    cache[key] = value
+    return value
 
 
-def _uniform_scale(transform: Matrix44) -> float:
-    origin = transform.transform(Vec3(0, 0, 0))
-    unit_x = transform.transform(Vec3(1, 0, 0))
-    return math.hypot(unit_x.x - origin.x, unit_x.y - origin.y)
+def _entity_bbox(entity):
+    """Return (min_x, min_y, max_x, max_y) or None if it cannot be computed."""
+    try:
+        bb = entity.bbox()
+        if not bb.has_data or not math.isfinite(bb.extmin.x):
+            return None
+        return (bb.extmin.x, bb.extmin.y, bb.extmax.x, bb.extmax.y)
+    except Exception:
+        return None

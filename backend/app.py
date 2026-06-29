@@ -90,7 +90,12 @@ def _select_handle(state: SessionState, data: dict) -> Optional[str]:
     """Find the entity handle nearest to a click given in base-SVG output units."""
     svg_x = float(data.get("svg_x", 0))
     svg_y = float(data.get("svg_y", 0))
-    return entity_mapper.find_nearest_entity(state, svg_x, svg_y)
+    tol = data.get("tol", None)
+    try:
+        tol = float(tol) if tol is not None else None
+    except (TypeError, ValueError):
+        tol = None
+    return entity_mapper.find_nearest_entity(state, svg_x, svg_y, tol=tol)
 
 
 def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -> bool:
@@ -261,6 +266,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             elif msg_type == "toggle_preview":
                 state.show_generated = bool(data.get("show_generated", True))
                 await websocket.send_json(_preview_payload(state))
+
+            elif msg_type == "svg_hover":
+                handle = _select_handle(state, data)
+                if handle:
+                    path_d = entity_mapper.entity_to_svg_path(state, handle)
+                    await websocket.send_json({
+                        "type": "hover_result",
+                        "data": {"handle": handle, "path_d": path_d},
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "hover_clear",
+                        "data": {},
+                    })
 
             elif msg_type == "clear_selection":
                 state.selected_handles = []

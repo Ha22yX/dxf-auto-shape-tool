@@ -25,6 +25,14 @@
     cursor: grabbing;
 }
 
+.svg-container.has-selectable-hover {
+    cursor: pointer;
+}
+
+#hover-highlight-path {
+    filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.8));
+}
+
 #dxf-content {
     pointer-events: all;
 }

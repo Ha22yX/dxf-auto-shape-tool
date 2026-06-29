@@ -43,8 +43,12 @@ class WSClient {
         this.ws.send(JSON.stringify({ type, data }));
     }
 
-    sendClick(svgX, svgY, append) {
-        this.send("svg_click", { svg_x: svgX, svg_y: svgY, append });
+    sendClick(svgX, svgY, append, tol) {
+        this.send("svg_click", { svg_x: svgX, svg_y: svgY, append, tol });
+    }
+
+    sendHover(svgX, svgY, tol) {
+        this.send("svg_hover", { svg_x: svgX, svg_y: svgY, tol });
     }
 
     sendParams(params) {

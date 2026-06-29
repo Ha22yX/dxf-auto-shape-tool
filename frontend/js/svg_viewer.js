@@ -21,14 +21,22 @@ class SvgViewer {
         this.scale = 1;
         this.translateX = 0;
         this.translateY = 0;
+        this.baseScale = 1; // viewBox -> WCS scale (set from upload response)
         this._hasSetInitialView = false;
 
         this.isPanning = false;
         this.panButton = -1;
-        this.startMouseSvg = { x: 0, y: 0 };
+        this.startMouseRawSvg = { x: 0, y: 0 };
         this.startTranslate = { x: 0, y: 0 };
         this.mouseDownPos = { clientX: 0, clientY: 0 };
         this.mouseMoved = false;
+
+        // Hover state
+        this.hoverPath = null;
+        this.lastHoverHandle = null;
+        this._hoverThrottle = null;
+        this._lastHoverPoint = null;
+        this.onHover = null;
 
         this.onClick = null;
         this.onMouseMove = null;
@@ -52,14 +60,27 @@ class SvgViewer {
 
         const overlay = document.createElementNS(SVG_NS, "g");
         overlay.setAttribute("id", "preview-overlay");
+        const hoverPath = document.createElementNS(SVG_NS, "path");
+        hoverPath.setAttribute("id", "hover-highlight-path");
+        hoverPath.setAttribute("fill", "none");
+        hoverPath.setAttribute("stroke", "#FFD166");
+        hoverPath.setAttribute("stroke-width", "3000");
+        hoverPath.setAttribute("stroke-opacity", "0.95");
+        hoverPath.setAttribute("stroke-linecap", "round");
+        hoverPath.setAttribute("stroke-linejoin", "round");
+        hoverPath.setAttribute("pointer-events", "none");
+        hoverPath.style.display = "none";
         const generatedLayer = document.createElementNS(SVG_NS, "g");
         generatedLayer.setAttribute("id", "generated-layer");
+        overlay.appendChild(hoverPath);
         overlay.appendChild(generatedLayer);
         viewport.appendChild(overlay);
 
         this.viewport = viewport;
         this.overlay = overlay;
+        this.hoverPath = hoverPath;
         this.generatedLayer = generatedLayer;
+        this.lastHoverHandle = null;
 
         this.svg.addEventListener("click", (e) => this._handleClick(e));
         this.svg.addEventListener("mousemove", (e) => this._handleMouseMove(e));
@@ -127,12 +148,58 @@ class SvgViewer {
         this._applyTransform();
     }
 
+    setHover(handle, pathD) {
+        if (!this.hoverPath) return;
+        if (!handle || !pathD) {
+            this.clearHover();
+            return;
+        }
+        if (handle === this.lastHoverHandle && this.hoverPath.getAttribute("d") === pathD) {
+            return;
+        }
+        this.lastHoverHandle = handle;
+        this.hoverPath.setAttribute("d", pathD);
+        this.hoverPath.style.display = "";
+        this.container.classList.add("has-selectable-hover");
+    }
+
+    clearHover() {
+        if (!this.hoverPath) return;
+        this.lastHoverHandle = null;
+        this.hoverPath.removeAttribute("d");
+        this.hoverPath.style.display = "none";
+        this.container.classList.remove("has-selectable-hover");
+    }
+
+    /**
+     * Convert a screen (client) point to authored drawing viewBox coordinates.
+     * The root SVG's CTM maps to the viewport-group-transformed space, so we
+     * additionally undo the pan/zoom transform to get back to the drawing's
+     * own coordinates (which the backend's WCS transform expects).
+     */
     clientPointToSvg(clientX, clientY) {
         if (!this.svg) return { x: clientX, y: clientY };
         const pt = this.svg.createSVGPoint();
         pt.x = clientX;
         pt.y = clientY;
-        return pt.matrixTransform(this.svg.getScreenCTM().inverse());
+        const v = pt.matrixTransform(this.svg.getScreenCTM().inverse());
+        return {
+            x: (v.x - this.translateX) / this.scale,
+            y: (v.y - this.translateY) / this.scale,
+        };
+    }
+
+    /**
+     * WCS units per screen pixel at the current zoom (for a pick aperture).
+     */
+    wcsPerPixel() {
+        if (!this.svg) return 0;
+        const ctm = this.svg.getScreenCTM();
+        if (!ctm || Math.abs(ctm.a) < 1e-12) return 0;
+        // getScreenCTM maps root viewBox units to CSS pixels. Invert it to get
+        // viewBox units per pixel, then undo viewport zoom and convert to WCS.
+        const viewBoxUnitsPerPixel = 1 / Math.abs(ctm.a);
+        return viewBoxUnitsPerPixel / Math.max(this.scale, 1e-9) / Math.max(this.baseScale, 1e-9);
     }
 
     _applyTransform() {
@@ -155,7 +222,13 @@ class SvgViewer {
             e.preventDefault();
             this.isPanning = true;
             this.panButton = e.button;
-            this.startMouseSvg = this.clientPointToSvg(e.clientX, e.clientY);
+            // Capture raw SVG root-viewBox point (unaffected by translate) for
+            // stable pan-delta.  Using clientPointToSvg() creates feedback because
+            // it subtracts the evolving translateX/Y.
+            const pt = this.svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            this.startMouseRawSvg = pt.matrixTransform(this.svg.getScreenCTM().inverse());
             this.startTranslate = { x: this.translateX, y: this.translateY };
             this.container.classList.add("is-panning");
         });
@@ -170,9 +243,12 @@ class SvgViewer {
             }
 
             if (!this.isPanning) return;
-            const currentSvg = this.clientPointToSvg(e.clientX, e.clientY);
-            this.translateX = this.startTranslate.x + (currentSvg.x - this.startMouseSvg.x);
-            this.translateY = this.startTranslate.y + (currentSvg.y - this.startMouseSvg.y);
+            const pt = this.svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const currentRaw = pt.matrixTransform(this.svg.getScreenCTM().inverse());
+            this.translateX = this.startTranslate.x + (currentRaw.x - this.startMouseRawSvg.x);
+            this.translateY = this.startTranslate.y + (currentRaw.y - this.startMouseRawSvg.y);
             this._applyTransform();
         });
 
@@ -214,6 +290,7 @@ class SvgViewer {
             this.onClick({
                 svgX: pt.x,
                 svgY: pt.y,
+                tol: 10 * this.wcsPerPixel(), // ~10px pick aperture in WCS
                 ctrlKey: e.ctrlKey || e.metaKey,
                 shiftKey: e.shiftKey,
             });
@@ -224,6 +301,18 @@ class SvgViewer {
         if (!this.svg || !this.onMouseMove) return;
         const pt = this.clientPointToSvg(e.clientX, e.clientY);
         this.onMouseMove({ x: pt.x, y: pt.y });
+        this._lastHoverPoint = pt;
+        if (!this.onHover || this.isPanning) return;
+        if (this._hoverThrottle) return;
+        this._hoverThrottle = window.setTimeout(() => {
+            this._hoverThrottle = null;
+            if (!this._lastHoverPoint || !this.onHover) return;
+            this.onHover({
+                svgX: this._lastHoverPoint.x,
+                svgY: this._lastHoverPoint.y,
+                tol: 12 * this.wcsPerPixel(),
+            });
+        }, 60);
     }
 }
 

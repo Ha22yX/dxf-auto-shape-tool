@@ -6,7 +6,7 @@ import sys
 import websockets
 
 
-async def test(session_id: str):
+async def run_test(session_id: str):
     uri = f"ws://127.0.0.1:8000/ws/{session_id}"
     async with websockets.connect(uri) as ws:
         # Click with handle directly
@@ -16,11 +16,11 @@ async def test(session_id: str):
         }))
         msg = json.loads(await ws.recv())
         print("Handle click response:", msg["type"], msg["data"].get("chain_info"))
-        assert msg["type"] == "svg_update"
+        assert msg["type"] == "preview_update"
 
     print("Handle-based click test passed")
 
 
 if __name__ == "__main__":
     sid = sys.argv[1]
-    asyncio.run(test(sid))
+    asyncio.run(run_test(sid))

@@ -34,6 +34,7 @@ const App = {
                 this.sessionId = result.session_id;
                 this.bounds = result.bounds;
                 this.scale = result.scale || 1;
+                svgViewer.baseScale = this.scale;
 
                 svgViewer.setBaseSvg(result.base_svg);
 
@@ -55,7 +56,7 @@ const App = {
     _bindViewer() {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
-            wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey);
+            wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol);
         };
 
         svgViewer.onMouseMove = (pt) => {
@@ -65,6 +66,11 @@ const App = {
                 document.getElementById("status-coords").textContent =
                     `坐标: ${wcsX.toFixed(1)}, ${wcsY.toFixed(1)}`;
             }
+        };
+
+        svgViewer.onHover = (evt) => {
+            if (!this.sessionId) return;
+            wsClient.sendHover(evt.svgX, evt.svgY, evt.tol);
         };
     },
 
@@ -119,10 +125,15 @@ const App = {
             }
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
+            svgViewer.clearHover();
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
             });
             document.getElementById("status-generated").textContent = "生成圆: 0";
+        } else if (msg.type === "hover_result") {
+            svgViewer.setHover(data.handle, data.path_d);
+        } else if (msg.type === "hover_clear") {
+            svgViewer.clearHover();
         } else if (msg.type === "error") {
             this._showError(data.message || "发生错误");
         }
