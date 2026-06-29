@@ -38,6 +38,13 @@ const App = {
                 this.scale = result.scale || 1;
                 svgViewer.baseScale = this.scale;
 
+                if (result.params) {
+                    parameterPanel.setParams(result.params);
+                }
+                if (result.show_generated !== undefined) {
+                    parameterPanel.setShowGenerated(result.show_generated);
+                }
+
                 svgViewer.setBaseSvg(result.base_svg);
 
                 wsClient.connect(this.sessionId);

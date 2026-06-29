@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260629-text-input">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-text-input">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260629-default-params">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-default-params">
 </head>
 <body>
     <div class="app">
@@ -40,11 +40,11 @@
                         <div class="slider-header">
                             <label>圆圈半径</label>
                             <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-circle-radius" value="5" data-step="0.1" data-min="0.1" data-max="9999">
+                                <input type="text" inputmode="decimal" id="param-circle-radius" value="3.5" data-step="0.1" data-min="0.1" data-max="9999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
-                        <input type="range" id="param-circle-radius-slider" min="0.1" max="50" step="0.1" value="5">
+                        <input type="range" id="param-circle-radius-slider" min="0.1" max="50" step="0.1" value="3.5">
                         <div class="slider-hints"><span>0.1</span><span>25</span><span>50</span></div>
                     </div>
 
@@ -61,11 +61,11 @@
                         <div class="slider-header">
                             <label>圆间距</label>
                             <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-circle-spacing" value="15" data-step="0.5" data-min="0" data-max="99999">
+                                <input type="text" inputmode="decimal" id="param-circle-spacing" value="17.5" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
-                        <input type="range" id="param-circle-spacing-slider" min="0" max="200" step="0.5" value="15">
+                        <input type="range" id="param-circle-spacing-slider" min="0" max="200" step="0.5" value="17.5">
                         <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
                     </div>
 
@@ -73,28 +73,28 @@
                         <div class="slider-header">
                             <label>射线整体偏移</label>
                             <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-ray-offset" value="5" data-step="0.5" data-min="-99999" data-max="99999">
+                                <input type="text" inputmode="decimal" id="param-ray-offset" value="75" data-step="0.5" data-min="-99999" data-max="99999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
-                        <input type="range" id="param-ray-offset-slider" min="-500" max="500" step="0.5" value="5">
+                        <input type="range" id="param-ray-offset-slider" min="-500" max="500" step="0.5" value="75">
                         <div class="slider-hints"><span>-500</span><span>0</span><span>500</span></div>
                     </div>
 
                     <div class="form-group slider-group" data-param="ray_count">
                         <div class="slider-header">
                             <label>射线数量</label>
-                            <input type="text" inputmode="numeric" id="param-ray-count" value="10" data-step="1" data-min="0" data-max="99999">
+                            <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
                         </div>
-                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="10">
+                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
                         <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
                     </div>
 
                     <div class="form-group">
                         <label for="param-ray-direction">射线方向</label>
                         <select id="param-ray-direction">
-                            <option value="inward" selected>向内</option>
-                            <option value="outward">向外</option>
+                            <option value="inward">向内</option>
+                            <option value="outward" selected>向外</option>
                         </select>
                     </div>
 
@@ -127,11 +127,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260629-text-input"></script>
-    <script src="/static/js/websocket.js?v=20260629-text-input"></script>
-    <script src="/static/js/svg_viewer.js?v=20260629-text-input"></script>
-    <script src="/static/js/selector.js?v=20260629-text-input"></script>
-    <script src="/static/js/parameter_panel.js?v=20260629-text-input"></script>
-    <script src="/static/js/app.js?v=20260629-text-input"></script>
+    <script src="/static/js/api.js?v=20260629-default-params"></script>
+    <script src="/static/js/websocket.js?v=20260629-default-params"></script>
+    <script src="/static/js/svg_viewer.js?v=20260629-default-params"></script>
+    <script src="/static/js/selector.js?v=20260629-default-params"></script>
+    <script src="/static/js/parameter_panel.js?v=20260629-default-params"></script>
+    <script src="/static/js/app.js?v=20260629-default-params"></script>
 </body>
 </html>

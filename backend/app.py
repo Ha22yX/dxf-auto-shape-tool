@@ -77,6 +77,8 @@ async def upload_dxf(file: UploadFile = File(...)):
         "bounds": base.bounds,
         "scale": base.scale,
         "entity_count": len(list(working_doc.modelspace())),
+        "params": state.params.to_dict(),
+        "show_generated": state.show_generated,
     }
 
 

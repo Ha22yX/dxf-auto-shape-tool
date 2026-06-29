@@ -1,12 +1,17 @@
 import os
 import sys
 import math
+import asyncio
+from io import BytesIO, StringIO
 from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import ezdxf
 from ezdxf.math import Vec2
+from fastapi import UploadFile
+from backend.app import upload_dxf
+from backend.config import DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator
 from backend.state import SessionState, CircleParams
 
@@ -26,6 +31,20 @@ def test_svg_export():
     result = svg_exporter.doc_to_svg(doc)
     assert result.svg_string.startswith("<svg")
     assert "data-handle" in result.svg_string
+
+
+def test_upload_returns_default_params():
+    doc = make_rect_doc()
+    stream = StringIO()
+    doc.write(stream)
+    upload = UploadFile(
+        filename="defaults.dxf",
+        file=BytesIO(stream.getvalue().encode("utf-8")),
+    )
+
+    response = asyncio.run(upload_dxf(upload))
+
+    assert response["params"] == DEFAULT_PARAMS
 
 
 def test_path_analyzer_chain():
