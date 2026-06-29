@@ -1,50 +1,60 @@
 @echo off
-chcp 65001 >nul
 setlocal
-
-title DXF 自动图形工具服务
+title DXF Auto Shape Tool Service
 cd /d "%~dp0"
 
 echo ========================================
-echo DXF 自动图形工具服务
+echo DXF Auto Shape Tool Service
 echo ========================================
 echo.
 
-echo 正在关闭旧的服务实例...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ids = @();" ^
-  "try { $ids += Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess } catch {}" ^
-  "$ids += Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -match 'uvicorn|backend\.app|spawn_main' } | Select-Object -ExpandProperty ProcessId;" ^
-  "$ids | Where-Object { $_ } | Sort-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
+echo Stopping old service instances...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop_old_service.ps1"
+
+set "PYTHON_CMD="
+if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"
+if defined PYTHON_CMD goto check_deps
+
+for /f "delims=" %%P in ('where python 2^>nul') do (
+    if not defined PYTHON_CMD set "PYTHON_CMD=%%P"
+)
+if defined PYTHON_CMD goto check_deps
+
+where py >nul 2>nul
+if not errorlevel 1 set "PYTHON_CMD=py"
+if defined PYTHON_CMD goto check_deps
+
+goto no_python
+
+:check_deps
+echo Using Python: %PYTHON_CMD%
+"%PYTHON_CMD%" -c "import uvicorn" >nul 2>nul
+if errorlevel 1 goto no_uvicorn
 
 echo.
-where python >nul 2>nul
-if errorlevel 1 (
-    echo 没有找到 python，请先安装 Python 或把 Python 加入 PATH。
-    echo.
-    pause
-    exit /b 1
-)
-
-python -c "import uvicorn" >nul 2>nul
-if errorlevel 1 (
-    echo 没有找到 uvicorn，请先安装依赖:
-    echo pip install -r requirements.txt
-    echo.
-    pause
-    exit /b 1
-)
-
-echo 正在启动服务...
-echo 访问地址: http://127.0.0.1:8000/
-echo 关闭这个窗口即可停止服务。
+echo Starting service...
+echo URL: http://127.0.0.1:8000/
+echo Close this window to stop the service.
 echo.
 
 start "" powershell -WindowStyle Hidden -NoProfile -Command "Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:8000/'"
 
-python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+"%PYTHON_CMD%" -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 echo.
-echo 服务已停止。如果是异常退出，请把上面的错误信息发给我。
+echo Service stopped. If it exited unexpectedly, send me the error above.
 pause
-endlocal
+exit /b
+
+:no_python
+echo Python was not found.
+echo Please install Python or add it to PATH.
+pause
+exit /b 1
+
+:no_uvicorn
+echo uvicorn was not found.
+echo Run this command first:
+echo pip install -r requirements.txt
+pause
+exit /b 1
