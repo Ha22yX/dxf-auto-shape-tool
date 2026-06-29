@@ -141,7 +141,7 @@ class SvgViewer {
         this.generatedLayer.style.display = showGenerated ? "" : "none";
         const capsules = geometry.capsules || [];
         for (const c of capsules) {
-            if (!c.d) continue;
+            if (!c || !c.d) continue;
             const path = document.createElementNS(SVG_NS, "path");
             path.setAttribute("d", c.d);
             path.setAttribute("fill", "none");
@@ -381,8 +381,8 @@ class SvgViewer {
         if (length <= 1e-6) return null;
         dx /= length;
         dy /= length;
-        const px = -dy;
-        const py = dx;
+        const px = dy;
+        const py = -dx;
         const nearLeft = { x: nearX + px * radius, y: nearY + py * radius };
         const farLeft = { x: farX + px * radius, y: farY + py * radius };
         const farRight = { x: farX - px * radius, y: farY - py * radius };
