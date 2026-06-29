@@ -1,148 +1,150 @@
-# 冲浪板吸附台 DXF 自动生成工具
+# Surfboard Vacuum Table DXF Generator
 
-![冲浪板吸附台 DXF 自动生成工具预览](Pic.png)
+English | [中文](README.zh-CN.md)
 
-这是一个本地网页工具，用来根据冲浪板外形 DXF，自动生成用于 Rufa.com / Rufa 公司的冲浪板缝合机布料吸附台的辅助加工图形。
+![Surfboard vacuum table DXF generator preview](Pic.png)
 
-项目面向的实际场景是：导入冲浪板边缘轮廓，选择需要布置吸附结构的边线后，工具会沿边线生成垂直射线、吸附圆孔、胶囊形长条槽，并导出新的 DXF 文件，方便后续加工吸附台面。
+This is a local web tool for generating DXF machining geometry for a surfboard fabric vacuum table used with Rufa.com / Rufa surfboard sewing equipment.
 
-Rufa 公司网址：[http://rufajx.com/](http://rufajx.com/)
+The intended workflow is simple: import a surfboard outline DXF, select the edge where the suction structure should be placed, then generate perpendicular rays, suction holes, and capsule-shaped slots along that edge. The result can be exported as a new DXF file for downstream fabrication.
 
-## 主要能力
+Rufa website: [http://rufajx.com/](http://rufajx.com/)
 
-- 上传冲浪板外形 DXF，并在浏览器中预览。
-- 鼠标悬浮在可选线段上时高亮，点击选择目标边线。
-- 支持 `Ctrl + 点击` 追加相邻边线，组合成连续边界。
-- 根据所选边线生成射线、圆孔和胶囊形长条槽。
-- 支持冲浪板常见的左右对称外形，自动显示垂直/水平对称轴和默认顶点。
-- 顶部尖端附近可设置不生成射线的间隔，让左右两侧从相同距离开始生成，保证对称。
-- 可设置水平对称轴上方/下方的无长条区域：该区域保留圆孔，但不生成胶囊长条。
-- 自动剔除重叠圆孔，被剔除的圆孔在预览中灰色半透明显示，导出时不写入 DXF。
-- 参数拖动时优先使用前端快速预览，后端只同步最新参数，减少操作延迟。
-- 导出 DXF 时只写入实际需要加工的圆孔和长条槽，不导出辅助线、对称轴和预览标记。
+## Key Features
 
-## 适用流程
+- Upload and preview surfboard outline DXF files in the browser.
+- Highlight selectable linework on hover, then click to select a target edge.
+- Use `Ctrl + click` to append adjacent edges into one continuous boundary.
+- Generate rays, circular suction holes, and capsule-shaped slots from the selected edge.
+- Support common left-right symmetric surfboard outlines with automatic vertical/horizontal symmetry guides and a default apex marker.
+- Skip ray generation around the pointed nose area so both sides can start from the same distance and remain symmetric.
+- Configure no-slot regions above and below the horizontal symmetry axis. Holes are kept in these regions, but capsule slots are omitted.
+- Automatically remove overlapping holes. Removed holes are shown as semi-transparent gray preview geometry and are not exported.
+- Use fast frontend preview while dragging parameters, while the backend only synchronizes the newest parameter set.
+- Export only real machining geometry to DXF. Preview guides, symmetry axes, apex markers, and helper lines are not exported.
 
-1. 准备冲浪板外形 DXF 文件。
-2. 打开工具，点击 `上传 DXF`。
-3. 鼠标移动到冲浪板边线附近，看到高亮后点击选中。
-4. 在右侧参数面板调整圆孔、射线、长条和间隔参数。
-5. 检查预览效果，确认吸附圆孔和长条槽分布正确。
-6. 点击 `保存 DXF`，得到可用于后续加工的生成文件。
+## Workflow
 
-## 参数说明
+1. Prepare a DXF file containing the surfboard outline.
+2. Open the tool and click `Upload DXF`.
+3. Move the mouse near the surfboard edge and click after the selectable edge is highlighted.
+4. Adjust hole, ray, slot, and spacing parameters in the right-side panel.
+5. Check the preview to make sure the suction holes and slots are distributed correctly.
+6. Click `Save DXF` to download the generated file.
 
-右侧参数面板按用途分区。
+## Parameters
 
-### 圆圈
+The right-side parameter panel is grouped by purpose.
 
-- `圆圈半径`：每个吸附圆孔的半径。
-- `每射线圆数`：每条射线上生成几个圆孔。
-- `圆间距`：同一条射线上相邻圆孔之间的距离。
+### Holes
 
-### 射线
+- `Circle Radius`: radius of each suction hole.
+- `Circles per Ray`: number of holes generated on each ray.
+- `Circle Spacing`: distance between adjacent holes on the same ray.
 
-- `射线整体偏移`：整体调整射线相对所选边线的偏移位置。
-- `射线数量`：沿所选边线生成多少条射线。
-- `射线方向`：选择向内或向外生成。
-- `闭合端点射线去重`：用于闭合或近似闭合边线，避免端点附近重复生成射线。顶部间隔不为 0 时会自动忽略该设置。
+### Rays
 
-### 长条与间隔
+- `Ray Offset`: global offset for ray positions relative to the selected edge.
+- `Ray Count`: number of rays generated along the selected edge.
+- `Ray Direction`: generate inward or outward from the selected edge.
+- `Deduplicate Closed End Rays`: avoids duplicate rays near the endpoints of closed or nearly closed paths. This is automatically ignored when the top gap is non-zero.
 
-- `长条起点距离`：胶囊长条靠近射线起点一端的位置。
-- `水平轴上方无长条距离`：水平对称轴上方指定范围内不生成长条。
-- `水平轴下方无长条距离`：水平对称轴下方指定范围内不生成长条。
-- `顶部间隔`：顶点附近不生成射线的距离，用于让左右两侧保持对称。
+### Slots and Gaps
 
-### 显示
+- `Capsule Start Distance`: position of the capsule slot end near the ray origin.
+- `No Slot Distance Above Horizontal Axis`: omits capsule slots within this distance above the horizontal symmetry axis.
+- `No Slot Distance Below Horizontal Axis`: omits capsule slots within this distance below the horizontal symmetry axis.
+- `Top Gap`: distance around the apex where rays are not generated, helping both sides stay symmetric.
 
-- `显示生成图`：控制是否显示生成的圆孔、射线和长条预览。
+### Display
 
-默认参数维护在 [backend/config.py](backend/config.py) 的 `DEFAULT_PARAMS` 中。
+- `Show Generated Geometry`: toggles the generated hole, ray, and slot preview.
 
-## 快速启动
+Default values are maintained in `DEFAULT_PARAMS` inside [backend/config.py](backend/config.py).
 
-推荐直接双击：
+## Quick Start
+
+The recommended way is to double-click:
 
 ```text
 一键启动服务.cmd
 ```
 
-脚本会先关闭旧的本地服务，再启动新的服务，并打开：
+The script stops any old local service, starts a new one, and opens:
 
 ```text
 http://127.0.0.1:8000/
 ```
 
-也可以手动启动：
+Manual startup is also available:
 
 ```bash
 pip install -r requirements.txt
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
-或者：
+Or:
 
 ```bash
 python main.py
 ```
 
-## 项目结构
+## Project Structure
 
 ```text
 backend/
-  app.py                    本地网页服务、接口、WebSocket
-  config.py                 默认参数、端口、图层名
-  state.py                  会话状态和参数模型
+  app.py                    Local web service, HTTP API, and WebSocket
+  config.py                 Default parameters, port, and layer names
+  state.py                  Session state and parameter model
   dxf_engine/
-    loader.py               DXF 读取
-    svg_exporter.py         DXF 转 SVG 预览
-    entity_mapper.py        鼠标命中 DXF 实体
-    path_analyzer.py        构建连续选中边线
-    geometry_utils.py       几何采样、弧线、对称轴计算
-    circle_generator.py     射线、圆孔、长条槽、重叠剔除、导出实体
+    loader.py               DXF loading
+    svg_exporter.py         DXF-to-SVG preview export
+    entity_mapper.py        Mouse hit testing against DXF entities
+    path_analyzer.py        Continuous selected edge construction
+    geometry_utils.py       Geometry sampling, arcs, and symmetry axis calculation
+    circle_generator.py     Rays, holes, slots, overlap pruning, and DXF export entities
 
 frontend/
-  index.html                页面结构和参数面板
+  index.html                Page structure and parameter panel
   css/
-    main.css                面板、按钮、参数分区样式
-    viewer.css              SVG 画布、悬浮高亮、辅助线样式
+    main.css                Panels, buttons, and parameter section styles
+    viewer.css              SVG canvas, hover highlights, and helper line styles
   js/
-    app.js                  前端主流程
-    api.js                  HTTP 接口封装
-    websocket.js            实时预览消息同步
-    svg_viewer.js           SVG 预览、缩放、平移、前端快速渲染
-    parameter_panel.js      参数输入和滑块同步
-    selector.js             选择辅助逻辑
+    app.js                  Main frontend flow
+    api.js                  HTTP API wrapper
+    websocket.js            Live preview message synchronization
+    svg_viewer.js           SVG preview, zoom, pan, and fast frontend rendering
+    parameter_panel.js      Parameter inputs and slider synchronization
+    selector.js             Selection helper logic
 
-tests/                      自动化测试
-Test Files/                 手工测试 DXF 文件
-temp/                       运行时临时文件
+tests/                      Automated tests
+Test Files/                 Manual DXF test files
+temp/                       Runtime temporary files
 ```
 
-## 技术说明
+## Technical Notes
 
-- 后端使用 FastAPI 和 ezdxf 处理 DXF。
-- 前端使用原生 HTML/CSS/JavaScript 渲染 SVG 预览。
-- 预览分为两层：原始 DXF 图层和生成结果图层。
-- 拖动参数时，前端会先快速重绘；后端计算完成后再同步最终结果。
-- 导出 DXF 以 `backend/dxf_engine/circle_generator.py` 中的核心几何逻辑为准。
+- The backend uses FastAPI and ezdxf for DXF handling.
+- The frontend uses plain HTML, CSS, and JavaScript to render the SVG preview.
+- The preview has two layers: the original DXF layer and the generated result layer.
+- While dragging parameters, the frontend redraws immediately; backend results are synchronized after calculation.
+- DXF export is based on the core geometry logic in [backend/dxf_engine/circle_generator.py](backend/dxf_engine/circle_generator.py).
 
-## 测试
+## Testing
 
-运行完整测试：
+Run the full test suite:
 
 ```bash
 python -m pytest
 ```
 
-运行主要 DXF/生成逻辑测试：
+Run the main DXF/generation tests:
 
 ```bash
 python -m pytest tests/test_dxf_engine.py
 ```
 
-检查前端 JavaScript 语法：
+Check frontend JavaScript syntax:
 
 ```bash
 node --check frontend/js/svg_viewer.js
@@ -150,29 +152,29 @@ node --check frontend/js/parameter_panel.js
 node --check frontend/js/app.js
 ```
 
-## 常见问题
+## FAQ
 
-### 页面没有更新
+### The page did not update
 
-浏览器可能缓存了旧的 JS/CSS 文件。刷新浏览器即可；如果仍然没有更新，可以清理浏览器缓存后重新打开。
+The browser may still be using cached JavaScript or CSS files. Refresh the page first. If it still shows the old version, clear the browser cache and reopen the tool.
 
-### 导入后图形变成大块灰色
+### The imported drawing appears as a large gray block
 
-通常是 DXF 转 SVG 后线宽处理异常导致的。当前版本避免对原始图层强制使用非缩放线宽，只对预览辅助图形使用稳定线宽。
+This is usually caused by abnormal DXF-to-SVG stroke width handling. The current version avoids forcing non-scaling strokes on the original imported layer and only applies stable stroke widths to preview helper geometry.
 
-### 拖动参数时感觉延迟
+### Parameter dragging feels delayed
 
-前端会先渲染当前参数，后端只保留最新参数进行计算。如果仍然感觉慢，优先检查是否有旧服务占用端口，或浏览器是否加载了旧缓存。
+The frontend renders the current parameter values immediately, and the backend only keeps the latest parameter set for calculation. If it still feels slow, check whether an old service is occupying the port or whether the browser has cached old files.
 
-### 预览和导出不一致
+### Preview and exported DXF do not match
 
-拖动过程中的预览可能是前端快速结果；停止调整后，后端会同步最终结果。最终导出的 DXF 以后端稳定结果为准。
+The preview shown while dragging may be a fast frontend result. After adjustment stops, the backend synchronizes the final result. The exported DXF uses the stable backend geometry as the source of truth.
 
-## 开发约定
+## Development Notes
 
-- 生成实体使用专用图层，辅助线、对称轴、顶点标记和范围提示线只用于预览。
-- 被自动剔除的圆孔只作为灰色半透明预览，不导出到 DXF。
-- 修改几何生成逻辑后，建议至少运行：
+- Generated machining entities use dedicated output layers. Helper lines, symmetry axes, apex markers, and range guides are preview-only.
+- Automatically removed holes are shown as semi-transparent gray preview geometry and are not exported to DXF.
+- After changing geometry generation logic, run at least:
 
 ```bash
 python -m pytest
