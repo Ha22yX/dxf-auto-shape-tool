@@ -115,6 +115,9 @@ class SvgViewer {
         this.translateY = 0;
         this._hasSetInitialView = true;
         this._applyTransform();
+        if (window.App && typeof window.App._ensurePreviewLoading === "function") {
+            window.App._ensurePreviewLoading();
+        }
     }
 
     setOverlay(geometry, showGenerated) {

@@ -213,7 +213,7 @@ const App = {
     },
 
     _showPreviewLoading(text = "计算中...") {
-        const overlay = document.getElementById("preview-loading");
+        const overlay = this._ensurePreviewLoading();
         const label = document.getElementById("preview-loading-text");
         if (label) label.textContent = text;
         if (overlay) overlay.classList.add("is-visible");
@@ -224,11 +224,34 @@ const App = {
         if (overlay) overlay.classList.remove("is-visible");
     },
 
+    _ensurePreviewLoading() {
+        let overlay = document.getElementById("preview-loading");
+        if (overlay) return overlay;
+
+        const container = document.getElementById("svg-container");
+        if (!container) return null;
+
+        overlay = document.createElement("div");
+        overlay.id = "preview-loading";
+        overlay.className = "preview-loading";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="preview-loading-indicator">
+                <span class="preview-loading-spinner"></span>
+                <span id="preview-loading-text">计算中...</span>
+            </div>
+        `;
+        container.appendChild(overlay);
+        return overlay;
+    },
+
     _showError(message) {
         console.error(message);
         alert(message);
     },
 };
+
+window.App = App;
 
 window.addEventListener("DOMContentLoaded", () => {
     App.init();
