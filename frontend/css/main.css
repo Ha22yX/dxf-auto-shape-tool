@@ -193,7 +193,8 @@ body {
     margin-bottom: 0;
 }
 
-.slider-group input[type="number"] {
+.slider-group .slider-header input[type="text"],
+.slider-group .slider-header input[type="number"] {
     width: 70px;
     text-align: right;
     padding: 4px 6px;

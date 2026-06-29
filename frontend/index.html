@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260629-ray500">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-ray500">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260629-text-input">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260629-text-input">
 </head>
 <body>
     <div class="app">
@@ -40,7 +40,7 @@
                         <div class="slider-header">
                             <label>圆圈半径</label>
                             <div class="input-with-unit">
-                                <input type="number" id="param-circle-radius" value="5" step="0.1" min="0.1" max="9999">
+                                <input type="text" inputmode="decimal" id="param-circle-radius" value="5" data-step="0.1" data-min="0.1" data-max="9999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
@@ -51,7 +51,7 @@
                     <div class="form-group slider-group" data-param="circles_per_ray">
                         <div class="slider-header">
                             <label>每射线圆数</label>
-                            <input type="number" id="param-circles-per-ray" value="3" step="1" min="0" max="10">
+                            <input type="text" inputmode="numeric" id="param-circles-per-ray" value="3" data-step="1" data-min="0" data-max="10">
                         </div>
                         <input type="range" id="param-circles-per-ray-slider" min="0" max="10" step="1" value="3">
                         <div class="slider-hints"><span>0</span><span>5</span><span>10</span></div>
@@ -61,7 +61,7 @@
                         <div class="slider-header">
                             <label>圆间距</label>
                             <div class="input-with-unit">
-                                <input type="number" id="param-circle-spacing" value="15" step="0.5" min="0" max="99999">
+                                <input type="text" inputmode="decimal" id="param-circle-spacing" value="15" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
@@ -73,7 +73,7 @@
                         <div class="slider-header">
                             <label>射线整体偏移</label>
                             <div class="input-with-unit">
-                                <input type="number" id="param-ray-offset" value="5" step="0.5" min="-99999" max="99999">
+                                <input type="text" inputmode="decimal" id="param-ray-offset" value="5" data-step="0.5" data-min="-99999" data-max="99999">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
@@ -84,7 +84,7 @@
                     <div class="form-group slider-group" data-param="ray_count">
                         <div class="slider-header">
                             <label>射线数量</label>
-                            <input type="number" id="param-ray-count" value="10" step="1" min="0" max="99999">
+                            <input type="text" inputmode="numeric" id="param-ray-count" value="10" data-step="1" data-min="0" data-max="99999">
                         </div>
                         <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="10">
                         <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
@@ -127,11 +127,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260629-ray500"></script>
-    <script src="/static/js/websocket.js?v=20260629-ray500"></script>
-    <script src="/static/js/svg_viewer.js?v=20260629-ray500"></script>
-    <script src="/static/js/selector.js?v=20260629-ray500"></script>
-    <script src="/static/js/parameter_panel.js?v=20260629-ray500"></script>
-    <script src="/static/js/app.js?v=20260629-ray500"></script>
+    <script src="/static/js/api.js?v=20260629-text-input"></script>
+    <script src="/static/js/websocket.js?v=20260629-text-input"></script>
+    <script src="/static/js/svg_viewer.js?v=20260629-text-input"></script>
+    <script src="/static/js/selector.js?v=20260629-text-input"></script>
+    <script src="/static/js/parameter_panel.js?v=20260629-text-input"></script>
+    <script src="/static/js/app.js?v=20260629-text-input"></script>
 </body>
 </html>

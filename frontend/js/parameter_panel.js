@@ -95,6 +95,19 @@ class ParameterPanel {
         return this._normalizeValue(key, value, "input");
     }
 
+    _isIntermediateNumber(raw) {
+        return raw === "" || raw === "-" || raw === "." || raw === "-." || raw.endsWith(".");
+    }
+
+    _readInputValue(key, fallback) {
+        const rawText = this.inputs[key].value.trim();
+        const raw = parseFloat(rawText);
+        if (this._isIntermediateNumber(rawText) || isNaN(raw)) {
+            return fallback;
+        }
+        return this._normalizeInputValue(key, raw);
+    }
+
     /**
      * Update the number input's min/max/step attributes to reflect the
      * authoritative input range (wider than the slider range).
@@ -123,8 +136,15 @@ class ParameterPanel {
         let value;
 
         if (source === "input") {
-            const raw = parseFloat(this.inputs[key].value);
-            value = isNaN(raw) ? cfg.min : this._normalizeInputValue(key, raw);
+            const rawText = this.inputs[key].value.trim();
+            const raw = parseFloat(rawText);
+            if (this._isIntermediateNumber(rawText) || isNaN(raw)) {
+                return;
+            }
+            value = this._normalizeInputValue(key, raw);
+            const sliderValue = Math.max(cfg.sliderMin, Math.min(cfg.sliderMax, value));
+            this.sliders[key].value = sliderValue;
+            return;
         } else {
             const raw = parseFloat(this.sliders[key].value);
             value = isNaN(raw)
@@ -139,10 +159,18 @@ class ParameterPanel {
         this.sliders[key].value = sliderValue;
     }
 
+    _commitInput(key) {
+        const cfg = this.paramConfigs[key];
+        const raw = parseFloat(this.inputs[key].value);
+        const value = isNaN(raw) ? cfg.min : this._normalizeInputValue(key, raw);
+        this.inputs[key].value = Number(value.toFixed(cfg.decimals));
+        const sliderValue = Math.max(cfg.sliderMin, Math.min(cfg.sliderMax, value));
+        this.sliders[key].value = sliderValue;
+    }
+
     getParams() {
         const parse = (key, fallback) => {
-            const raw = parseFloat(this.inputs[key].value);
-            return isNaN(raw) ? fallback : raw;
+            return this._readInputValue(key, fallback);
         };
 
         const params = {
@@ -171,8 +199,6 @@ class ParameterPanel {
                 ? this.dedupeClosedRays.checked
                 : true,
         };
-        // Push normalized values back to the UI so they match what was sent.
-        this.setParams(params);
         return params;
     }
 
@@ -215,8 +241,17 @@ class ParameterPanel {
                 triggerChange();
             });
             this.inputs[key].addEventListener("change", () => {
-                this._sync(key, "input");
+                this._commitInput(key);
                 triggerChange();
+            });
+            this.inputs[key].addEventListener("blur", () => {
+                this._commitInput(key);
+            });
+            this.inputs[key].addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    this._commitInput(key);
+                    triggerChange();
+                }
             });
             this.sliders[key].addEventListener("input", () => {
                 this._sync(key, "slider");
