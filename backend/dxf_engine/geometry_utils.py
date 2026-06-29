@@ -486,18 +486,10 @@ class SamplePoint:
     handle: str
     segment_index: int = 0
     t: float = 0.0
+    distance: float = 0.0
 
 
-def sample_chain(doc, chain: List[str], num_points: int, closed: bool = False) -> List[SamplePoint]:
-    """
-    Sample `num_points` points evenly along the chain by arc length.
-    If `closed` is True, treat the chain as a closed loop (first == last point).
-    Returns list of SamplePoint.
-    """
-    if num_points <= 0:
-        return []
-
-    # Build segments
+def _build_segments(doc, chain: List[str]) -> List["_Segment"]:
     segments = []
     for handle in chain:
         entity = doc.entitydb.get(handle)
@@ -506,42 +498,104 @@ def sample_chain(doc, chain: List[str], num_points: int, closed: bool = False) -
         pts_data = _get_parametrization(entity)
         if pts_data:
             segments.extend(pts_data)
+    return segments
 
-    if not segments:
-        return []
 
-    # Cumulative length
+def _cumulative_lengths(segments: List["_Segment"]) -> List[float]:
     cum_lengths = [0.0]
     for seg in segments:
         cum_lengths.append(cum_lengths[-1] + seg.length)
+    return cum_lengths
 
+
+def chain_length(doc, chain: List[str]) -> float:
+    segments = _build_segments(doc, chain)
+    if not segments:
+        return 0.0
+    return _cumulative_lengths(segments)[-1]
+
+
+def sample_chain(doc, chain: List[str], num_points: int, closed: bool = False,
+                 smooth_tangents: bool = True) -> List[SamplePoint]:
+    """
+    Sample `num_points` points evenly along the chain by arc length.
+    If `closed` is True, the final duplicated endpoint is skipped.
+    Returns list of SamplePoint.
+    """
+    if num_points <= 0:
+        return []
+
+    segments = _build_segments(doc, chain)
+    if not segments:
+        return []
+
+    cum_lengths = _cumulative_lengths(segments)
     total = cum_lengths[-1]
     if total < 1e-9:
         return []
 
-    result = []
     if closed:
-        # Evenly distribute around the loop; last point coincides with first
         step = total / num_points
-        for k in range(num_points):
-            target = k * step
-            result.append(_sample_at_distance(segments, cum_lengths, target, total))
+        distances = [k * step for k in range(num_points)]
     else:
-        # Include both endpoints
         if num_points == 1:
-            result.append(_sample_at_distance(segments, cum_lengths, 0.0, total))
+            distances = [0.0]
         else:
-            for k in range(num_points):
-                target = total * k / (num_points - 1)
-                result.append(_sample_at_distance(segments, cum_lengths, target, total))
+            distances = [total * k / (num_points - 1) for k in range(num_points)]
 
-    return result
+    return sample_chain_at_distances(
+        doc,
+        chain,
+        distances,
+        smooth_tangents=smooth_tangents,
+        total=total,
+        segments=segments,
+        cum_lengths=cum_lengths,
+        smooth_window=_smooth_window(total, num_points),
+    )
 
 
-def _sample_at_distance(segments: List[_Segment], cum_lengths: List[float],
-                        target: float, total: float) -> SamplePoint:
+def sample_chain_at_distances(doc, chain: List[str], distances: List[float],
+                              smooth_tangents: bool = True,
+                              total: Optional[float] = None,
+                              segments: Optional[List["_Segment"]] = None,
+                              cum_lengths: Optional[List[float]] = None,
+                              smooth_window: Optional[float] = None) -> List[SamplePoint]:
+    if not distances:
+        return []
+    if segments is None:
+        segments = _build_segments(doc, chain)
+    if not segments:
+        return []
+    if cum_lengths is None:
+        cum_lengths = _cumulative_lengths(segments)
+    if total is None:
+        total = cum_lengths[-1]
+    if total < 1e-9:
+        return []
+    if smooth_window is None:
+        smooth_window = _smooth_window(total, len(distances))
+    return [
+        _sample_at_distance(
+            segments,
+            cum_lengths,
+            distance,
+            total,
+            smooth_window=smooth_window if smooth_tangents else 0.0,
+        )
+        for distance in distances
+    ]
+
+
+def _smooth_window(total: float, num_points: int) -> float:
+    if num_points <= 1:
+        return 0.0
+    return max(0.0, min(total * 0.01, total / max(num_points * 2, 16)))
+
+
+def _raw_sample_at_distance(segments: List["_Segment"], cum_lengths: List[float],
+                            target: float, total: float) -> Tuple[Vec2, Vec2, Vec2, "_Segment", float]:
     """Helper to sample a point at a given distance along segments."""
-    # Clamp target to [0, total]
     target = max(0.0, min(total, target))
 
     idx = 0
@@ -559,6 +613,28 @@ def _sample_at_distance(segments: List[_Segment], cum_lengths: List[float],
     local_t = max(0.0, min(1.0, local_t))
 
     point, tangent, normal = seg.evaluate(local_t)
+    return point, tangent, normal, seg, local_t
+
+
+def _sample_at_distance(segments: List["_Segment"], cum_lengths: List[float],
+                        target: float, total: float, smooth_window: float = 0.0) -> SamplePoint:
+    """Helper to sample a point at a given distance along segments."""
+    target = max(0.0, min(total, target))
+    point, tangent, normal, seg, local_t = _raw_sample_at_distance(
+        segments, cum_lengths, target, total
+    )
+
+    if smooth_window > 1e-9 and seg.smoothable:
+        start = max(0.0, target - smooth_window)
+        end = min(total, target + smooth_window)
+        if end - start > 1e-9:
+            p_start, _, _, _, _ = _raw_sample_at_distance(segments, cum_lengths, start, total)
+            p_end, _, _, _, _ = _raw_sample_at_distance(segments, cum_lengths, end, total)
+            smoothed = normalize(p_end - p_start)
+            if smoothed.magnitude > 1e-9:
+                tangent = smoothed
+                normal = perpendicular(tangent, clockwise=False)
+
     return SamplePoint(
         point=point,
         tangent=tangent,
@@ -566,6 +642,7 @@ def _sample_at_distance(segments: List[_Segment], cum_lengths: List[float],
         handle=seg.handle,
         segment_index=seg.segment_index,
         t=local_t,
+        distance=target,
     )
 
 
@@ -575,6 +652,7 @@ class _Segment:
     segment_index: int
     length: float
     evaluate: Callable[[float], Tuple[Vec2, Vec2, Vec2]]
+    smoothable: bool = True
 
 
 def _get_parametrization(entity) -> List[_Segment]:
@@ -610,7 +688,13 @@ def _get_parametrization(entity) -> List[_Segment]:
             normal = perpendicular(tangent, clockwise=False)
             return p, tangent, normal
 
-        result.append(_Segment(handle=entity.dxf.handle, segment_index=0, length=length, evaluate=eval_arc))
+        result.append(_Segment(
+            handle=entity.dxf.handle,
+            segment_index=0,
+            length=length,
+            evaluate=eval_arc,
+            smoothable=False,
+        ))
 
     elif dtype == "LWPOLYLINE":
         pts = list(entity.get_points(format="xyb"))
@@ -660,6 +744,7 @@ def _get_parametrization(entity) -> List[_Segment]:
                 segment_index=i,
                 length=length,
                 evaluate=make_eval(i),
+                smoothable=abs(b1) < 1e-9,
             ))
 
     elif dtype == "POLYLINE":
@@ -715,6 +800,7 @@ def _get_parametrization(entity) -> List[_Segment]:
                     segment_index=i,
                     length=length,
                     evaluate=make_eval_poly(i),
+                    smoothable=abs(b1) < 1e-9,
                 ))
         except Exception:
             pass
@@ -731,7 +817,13 @@ def _get_parametrization(entity) -> List[_Segment]:
             normal = perpendicular(tangent, clockwise=False)
             return p, tangent, normal
 
-        result.append(_Segment(handle=entity.dxf.handle, segment_index=0, length=length, evaluate=eval_circle))
+        result.append(_Segment(
+            handle=entity.dxf.handle,
+            segment_index=0,
+            length=length,
+            evaluate=eval_circle,
+            smoothable=False,
+        ))
 
     elif dtype == "ELLIPSE":
         try:

@@ -6,6 +6,7 @@ Two entry points:
 - ``generate_circles``: writes real entities into a DXF document (download only).
 """
 from typing import List, Tuple
+import math
 import ezdxf
 from ezdxf.math import Vec2
 
@@ -49,6 +50,77 @@ def _dedupe_placements_by_source(placements):
     return unique
 
 
+def _allocate_counts(lengths, total_count):
+    total_length = sum(lengths)
+    if total_count <= 0 or total_length <= 1e-9:
+        return [0 for _ in lengths]
+
+    raw = [total_count * length / total_length for length in lengths]
+    counts = [math.floor(value) for value in raw]
+    remaining = total_count - sum(counts)
+    order = sorted(range(len(lengths)), key=lambda i: raw[i] - counts[i], reverse=True)
+    for idx in order[:remaining]:
+        counts[idx] += 1
+    return counts
+
+
+def _distances_in_interval(start, end, count):
+    if count <= 0 or end < start:
+        return []
+    if count == 1:
+        return [(start + end) / 2.0]
+    step = (end - start) / (count - 1)
+    return [start + step * i for i in range(count)]
+
+
+def _top_gap_distances(doc, chain, ray_count, gap_distance):
+    total = geom.chain_length(doc, chain)
+    if total <= 1e-9 or ray_count <= 0:
+        return []
+
+    dense_count = max(129, min(4001, int(total / 2.0) if total > 0 else 129))
+    if dense_count % 2 == 0:
+        dense_count += 1
+    dense = geom.sample_chain(doc, chain, dense_count, closed=False)
+    if not dense:
+        return []
+
+    apex = max(dense, key=lambda sample: sample.point.y)
+    gap = max(0.0, gap_distance)
+
+    intervals = []
+    left_end = apex.distance - gap
+    right_start = apex.distance + gap
+    if left_end > 1e-9:
+        intervals.append((0.0, left_end))
+    if right_start < total - 1e-9:
+        intervals.append((right_start, total))
+
+    lengths = [end - start for start, end in intervals]
+    counts = _allocate_counts(lengths, ray_count)
+
+    distances = []
+    for (start, end), count in zip(intervals, counts):
+        distances.extend(_distances_in_interval(start, end, count))
+    return distances
+
+
+def _samples_for_generation(doc, chain, params):
+    top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
+    if top_gap > 0:
+        distances = _top_gap_distances(doc, chain, params.ray_count, top_gap)
+        return geom.sample_chain_at_distances(doc, chain, distances, smooth_tangents=True)
+
+    skip_terminal_endpoint = params.dedupe_closed_rays
+    return geom.sample_chain(
+        doc,
+        chain,
+        params.ray_count,
+        closed=skip_terminal_endpoint,
+        smooth_tangents=True,
+    )
+
+
 def _oriented_normals(doc, chain, samples, params, closed):
     """Compute consistently-oriented normals along the chain (left-of-tangent)."""
     if closed:
@@ -83,8 +155,8 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
     if not chain or params.ray_count <= 0 or params.circles_per_ray <= 0:
         return []
 
-    skip_terminal_endpoint = params.dedupe_closed_rays
-    samples = geom.sample_chain(doc, chain, params.ray_count, closed=skip_terminal_endpoint)
+    top_gap_active = getattr(params, "top_gap_distance", 0.0) > 0
+    samples = _samples_for_generation(doc, chain, params)
     if not samples:
         return []
 
@@ -104,7 +176,7 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
             "ray_end": ray_end,
             "centers": centers,
         })
-    if params.dedupe_closed_rays:
+    if params.dedupe_closed_rays and not top_gap_active:
         placements = _dedupe_placements_by_source(placements)
     return placements
 

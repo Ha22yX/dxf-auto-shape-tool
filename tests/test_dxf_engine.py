@@ -12,7 +12,7 @@ from ezdxf.math import Vec2
 from fastapi import UploadFile
 from backend.app import upload_dxf
 from backend.config import DEFAULT_PARAMS
-from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator
+from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
 
 
@@ -168,6 +168,48 @@ def test_circle_generator_on_polyline_bulge():
     for h in circle_handles:
         circle = doc.entitydb[h]
         assert circle.dxf.center.y < 0
+
+
+def test_polyline_arc_uses_smoothed_curve_normal():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    points = []
+    for i in range(13):
+        angle = math.pi - math.pi * i / 12
+        points.append((10 * math.cos(angle), 10 * math.sin(angle)))
+    poly = msp.add_lwpolyline(points, close=False)
+
+    samples = geometry_utils.sample_chain(doc, [poly.dxf.handle], 3, closed=False)
+
+    top_sample = samples[1]
+    assert abs(top_sample.point.x) < 1e-6
+    assert abs(top_sample.normal.x) < 0.15
+
+
+def test_top_gap_skips_apex_but_keeps_ray_count():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    poly = msp.add_lwpolyline([(-10, 0), (0, 10), (10, 0)], close=False)
+    params = CircleParams(
+        circle_radius=0.5,
+        circles_per_ray=1,
+        circle_spacing=2.0,
+        ray_offset=1.0,
+        ray_count=4,
+        ray_direction="outward",
+        dedupe_closed_rays=True,
+        top_gap_distance=2.0,
+    )
+
+    placements = circle_generator.compute_placements(
+        doc, [poly.dxf.handle], params, closed=False
+    )
+
+    assert len(placements) == 4
+    apex = Vec2(0, 10)
+    assert all((p["point"] - apex).magnitude >= 2.0 - 1e-6 for p in placements)
+    assert sum(1 for p in placements if p["point"].x < 0) == 2
+    assert sum(1 for p in placements if p["point"].x > 0) == 2
 
 
 def test_circle_generator_on_circle():

@@ -12,6 +12,7 @@ class CircleParams:
     circles_per_ray: int = DEFAULT_PARAMS["circles_per_ray"]
     circle_spacing: float = DEFAULT_PARAMS["circle_spacing"]
     ray_offset: float = DEFAULT_PARAMS["ray_offset"]
+    top_gap_distance: float = DEFAULT_PARAMS["top_gap_distance"]
     ray_count: int = DEFAULT_PARAMS["ray_count"]
     ray_direction: str = DEFAULT_PARAMS["ray_direction"]
     dedupe_closed_rays: bool = DEFAULT_PARAMS["dedupe_closed_rays"]
@@ -23,6 +24,7 @@ class CircleParams:
             circles_per_ray=int(data.get("circles_per_ray", DEFAULT_PARAMS["circles_per_ray"])),
             circle_spacing=float(data.get("circle_spacing", DEFAULT_PARAMS["circle_spacing"])),
             ray_offset=float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"])),
+            top_gap_distance=float(data.get("top_gap_distance", DEFAULT_PARAMS["top_gap_distance"])),
             ray_count=int(data.get("ray_count", DEFAULT_PARAMS["ray_count"])),
             ray_direction=str(data.get("ray_direction", DEFAULT_PARAMS["ray_direction"])),
             dedupe_closed_rays=bool(data.get("dedupe_closed_rays", DEFAULT_PARAMS["dedupe_closed_rays"])),
@@ -34,6 +36,7 @@ class CircleParams:
             "circles_per_ray": self.circles_per_ray,
             "circle_spacing": self.circle_spacing,
             "ray_offset": self.ray_offset,
+            "top_gap_distance": self.top_gap_distance,
             "ray_count": self.ray_count,
             "ray_direction": self.ray_direction,
             "dedupe_closed_rays": self.dedupe_closed_rays,
