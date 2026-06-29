@@ -126,7 +126,13 @@ def _top_gap_distances(doc, chain, ray_count, gap_distance, closed=False):
 def _samples_for_generation(doc, chain, params, closed):
     top_gap = max(0.0, getattr(params, "top_gap_distance", 0.0))
     if top_gap > 0:
-        distances = _top_gap_distances(doc, chain, params.ray_count, top_gap, closed=closed)
+        generated_reach = (
+            abs(params.ray_offset)
+            + max(0, params.circles_per_ray - 1) * abs(params.circle_spacing)
+            + params.circle_radius
+        )
+        effective_gap = top_gap + generated_reach
+        distances = _top_gap_distances(doc, chain, params.ray_count, effective_gap, closed=closed)
         return geom.sample_chain_at_distances(doc, chain, distances, smooth_tangents=True)
 
     skip_terminal_endpoint = params.dedupe_closed_rays
