@@ -304,11 +304,12 @@ class SvgViewer {
         }
         const h = baseGeometry.symmetry_axes.horizontal;
         const svgScale = Number(baseGeometry.scale || this.baseScale || 1);
-        const gap = Math.max(0, Number(params && params.capsule_axis_gap_distance || 0)) * svgScale;
+        const aboveGap = Math.max(0, Number(params && params.capsule_axis_gap_above_distance || 0)) * svgScale;
+        const belowGap = Math.max(0, Number(params && params.capsule_axis_gap_below_distance || 0)) * svgScale;
         const centerY = (Number(h.y1) + Number(h.y2)) / 2;
         return {
-            upper: { x1: h.x1, y1: centerY - gap, x2: h.x2, y2: centerY - gap },
-            lower: { x1: h.x1, y1: centerY + gap, x2: h.x2, y2: centerY + gap },
+            upper: { x1: h.x1, y1: centerY - aboveGap, x2: h.x2, y2: centerY - aboveGap },
+            lower: { x1: h.x1, y1: centerY + belowGap, x2: h.x2, y2: centerY + belowGap },
         };
     }
 
@@ -342,7 +343,8 @@ class SvgViewer {
         const radius = Math.max(0, Number(params.circle_radius || 0)) * svgScale;
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
-        const axisGap = Math.max(0, Number(params.capsule_axis_gap_distance || 0)) * svgScale;
+        const aboveAxisGap = Math.max(0, Number(params.capsule_axis_gap_above_distance || 0)) * svgScale;
+        const belowAxisGap = Math.max(0, Number(params.capsule_axis_gap_below_distance || 0)) * svgScale;
         const horizontalAxis = baseGeometry.symmetry_axes && baseGeometry.symmetry_axes.horizontal;
         const horizontalAxisY = horizontalAxis
             ? (Number(horizontalAxis.y1) + Number(horizontalAxis.y2)) / 2
@@ -389,7 +391,8 @@ class SvgViewer {
             radius,
             capsuleStart,
             horizontalAxisY,
-            axisGap,
+            aboveAxisGap,
+            belowAxisGap,
         );
         return {
             rays,
@@ -399,7 +402,15 @@ class SvgViewer {
         };
     }
 
-    _capsulesFromKeptCircles(basis, keptCircles, radius, nearDistance, axisY = null, axisGap = 0) {
+    _capsulesFromKeptCircles(
+        basis,
+        keptCircles,
+        radius,
+        nearDistance,
+        axisY = null,
+        aboveAxisGap = 0,
+        belowAxisGap = 0,
+    ) {
         const groups = new Map();
         for (const circle of keptCircles) {
             if (!groups.has(circle.placementIndex)) groups.set(circle.placementIndex, []);
@@ -409,8 +420,14 @@ class SvgViewer {
         const capsules = [];
         for (const [placementIndex, circles] of groups.entries()) {
             if (!basis[placementIndex] || circles.length < 1) continue;
-            if (axisY !== null && Math.abs(Number(basis[placementIndex].y) - axisY) <= axisGap + 0.001) {
-                continue;
+            if (axisY !== null) {
+                const dy = axisY - Number(basis[placementIndex].y);
+                if (dy >= 0 && aboveAxisGap > 0 && dy <= aboveAxisGap + 0.001) {
+                    continue;
+                }
+                if (dy < 0 && belowAxisGap > 0 && Math.abs(dy) <= belowAxisGap + 0.001) {
+                    continue;
+                }
             }
             circles.sort((a, b) => a.circleIndex - b.circleIndex);
             const far = circles[circles.length - 1];

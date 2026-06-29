@@ -186,31 +186,36 @@ def _chain_axis(doc, chain):
 
 
 def _inside_capsule_axis_gap(placement, axis, params):
-    gap = max(0.0, getattr(params, "capsule_axis_gap_distance", 0.0))
-    if gap <= 0 or not axis:
+    if not axis:
         return False
-    return abs(placement["point"].y - axis["center"].y) <= gap + POINT_TOLERANCE
+    above_gap = max(0.0, getattr(params, "capsule_axis_gap_above_distance", 0.0))
+    below_gap = max(0.0, getattr(params, "capsule_axis_gap_below_distance", 0.0))
+    dy = placement["point"].y - axis["center"].y
+    if dy >= 0:
+        return above_gap > 0 and dy <= above_gap + POINT_TOLERANCE
+    return below_gap > 0 and abs(dy) <= below_gap + POINT_TOLERANCE
 
 
 def _capsule_gap_guide_overlay(doc, chain, params, bounds, scale):
     axes = _symmetry_axes_overlay(doc, chain, bounds, scale)
     if not axes or not axes.get("horizontal"):
         return None
-    gap = max(0.0, getattr(params, "capsule_axis_gap_distance", 0.0)) * scale
+    above_gap = max(0.0, getattr(params, "capsule_axis_gap_above_distance", 0.0)) * scale
+    below_gap = max(0.0, getattr(params, "capsule_axis_gap_below_distance", 0.0)) * scale
     horizontal = axes["horizontal"]
     center_y = (horizontal["y1"] + horizontal["y2"]) / 2.0
     return {
         "upper": {
             "x1": horizontal["x1"],
-            "y1": center_y - gap,
+            "y1": center_y - above_gap,
             "x2": horizontal["x2"],
-            "y2": center_y - gap,
+            "y2": center_y - above_gap,
         },
         "lower": {
             "x1": horizontal["x1"],
-            "y1": center_y + gap,
+            "y1": center_y + below_gap,
             "x2": horizontal["x2"],
-            "y2": center_y + gap,
+            "y2": center_y + below_gap,
         },
     }
 

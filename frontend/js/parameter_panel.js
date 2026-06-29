@@ -49,11 +49,19 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
-            capsule_axis_gap_distance: {
+            capsule_axis_gap_above_distance: {
                 min: 0,
                 max: 99999,
                 sliderMin: 0,
-                sliderMax: 500,
+                sliderMax: 2000,
+                step: 0.5,
+                decimals: 1,
+            },
+            capsule_axis_gap_below_distance: {
+                min: 0,
+                max: 99999,
+                sliderMin: 0,
+                sliderMax: 2000,
                 step: 0.5,
                 decimals: 1,
             },
@@ -264,9 +272,13 @@ class ParameterPanel {
                 "capsule_start_distance",
                 parse("capsule_start_distance", 0.1),
             ),
-            capsule_axis_gap_distance: this._normalizeInputValue(
-                "capsule_axis_gap_distance",
-                parse("capsule_axis_gap_distance", 0),
+            capsule_axis_gap_above_distance: this._normalizeInputValue(
+                "capsule_axis_gap_above_distance",
+                parse("capsule_axis_gap_above_distance", 0),
+            ),
+            capsule_axis_gap_below_distance: this._normalizeInputValue(
+                "capsule_axis_gap_below_distance",
+                parse("capsule_axis_gap_below_distance", 0),
             ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",
@@ -342,7 +354,10 @@ class ParameterPanel {
                 triggerChange();
             });
 
-            if (key === "capsule_axis_gap_distance") {
+            if (
+                key === "capsule_axis_gap_above_distance"
+                || key === "capsule_axis_gap_below_distance"
+            ) {
                 this._bindGuideEvents(key);
             }
         }

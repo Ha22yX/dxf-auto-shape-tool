@@ -95,7 +95,10 @@ const App = {
         };
 
         parameterPanel.onGuideChange = (key, visible, params) => {
-            if (key === "capsule_axis_gap_distance") {
+            if (
+                key === "capsule_axis_gap_above_distance"
+                || key === "capsule_axis_gap_below_distance"
+            ) {
                 svgViewer.setCapsuleGapGuideVisible(visible, params);
             }
         };

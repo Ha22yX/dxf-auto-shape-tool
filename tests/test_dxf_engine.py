@@ -677,7 +677,8 @@ def test_capsule_axis_gap_skips_capsules_but_keeps_circles_in_preview_and_export
         circle_spacing=5.0,
         ray_offset=10.0,
         capsule_start_distance=1.0,
-        capsule_axis_gap_distance=1000.0,
+        capsule_axis_gap_above_distance=1000.0,
+        capsule_axis_gap_below_distance=1000.0,
         ray_count=6,
         ray_direction="outward",
     )
@@ -707,6 +708,37 @@ def test_capsule_axis_gap_skips_capsules_but_keeps_circles_in_preview_and_export
     assert sum(1 for entity in generated if entity.dxftype() == "CIRCLE") == len(circle_handles)
     assert sum(1 for entity in generated if entity.dxftype() == "LINE") == 0
     assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 0
+
+
+def test_capsule_axis_gap_guide_can_use_different_above_and_below_distances():
+    doc = make_rect_doc()
+    handles = [e.dxf.handle for e in doc.modelspace()]
+    params = CircleParams(
+        capsule_axis_gap_above_distance=10.0,
+        capsule_axis_gap_below_distance=30.0,
+    )
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        handles,
+        params,
+        closed=True,
+        bounds={"min": [0, 0], "max": [100, 80]},
+        scale=2.0,
+    )
+
+    guide = preview["capsule_gap_guide"]
+    axis_y = preview["symmetry_axes"]["horizontal"]["y1"]
+
+    assert guide["upper"]["y1"] == axis_y - 20.0
+    assert guide["lower"]["y1"] == axis_y + 60.0
+
+
+def test_legacy_capsule_axis_gap_applies_to_both_sides():
+    params = CircleParams.from_dict({"capsule_axis_gap_distance": 12.5})
+
+    assert params.capsule_axis_gap_above_distance == 12.5
+    assert params.capsule_axis_gap_below_distance == 12.5
 
 
 def test_capsule_start_distance_is_clamped_to_first_circle():
