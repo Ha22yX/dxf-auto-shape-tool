@@ -15,12 +15,12 @@ SVG_MARGIN = 20
 
 # Default circle generation parameters
 DEFAULT_PARAMS = {
-    "circle_radius": 5.0,
+    "circle_radius": 3.5,
     "circles_per_ray": 3,
-    "circle_spacing": 15.0,
-    "ray_offset": 5.0,
-    "ray_count": 10,
-    "ray_direction": "inward",  # "inward" or "outward"
+    "circle_spacing": 17.5,
+    "ray_offset": 75.0,
+    "ray_count": 200,
+    "ray_direction": "outward",  # "inward" or "outward"
     "dedupe_closed_rays": True,
 }
 

@@ -176,7 +176,7 @@ class ParameterPanel {
         const params = {
             circle_radius: this._normalizeInputValue(
                 "circle_radius",
-                parse("circle_radius", 5),
+                parse("circle_radius", 3.5),
             ),
             circles_per_ray: this._normalizeInputValue(
                 "circles_per_ray",
@@ -184,17 +184,17 @@ class ParameterPanel {
             ),
             circle_spacing: this._normalizeInputValue(
                 "circle_spacing",
-                parse("circle_spacing", 15),
+                parse("circle_spacing", 17.5),
             ),
             ray_offset: this._normalizeInputValue(
                 "ray_offset",
-                parse("ray_offset", 5),
+                parse("ray_offset", 75),
             ),
             ray_count: this._normalizeInputValue(
                 "ray_count",
-                parse("ray_count", 10),
+                parse("ray_count", 200),
             ),
-            ray_direction: this.rayDirection ? this.rayDirection.value : "inward",
+            ray_direction: this.rayDirection ? this.rayDirection.value : "outward",
             dedupe_closed_rays: this.dedupeClosedRays
                 ? this.dedupeClosedRays.checked
                 : true,
