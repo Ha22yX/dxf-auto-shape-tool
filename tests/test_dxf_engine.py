@@ -1832,6 +1832,33 @@ def test_air_duct_base_plate_end_cap_stays_near_real_tip_width():
     assert max(point.x for point in bottom_points) - min(point.x for point in bottom_points) <= 20.0
 
 
+def test_air_duct_base_plate_end_cap_does_not_fold_inward():
+    component = [
+        Vec2(400.0, 0.0),
+        Vec2(290.0, 10.0),
+        Vec2(250.0, 40.0),
+        Vec2(630.0, 40.0),
+        Vec2(590.0, 10.0),
+        Vec2(480.0, 0.0),
+    ]
+
+    plate = circle_generator._air_duct_base_plate_polygon(
+        [component],
+        margin=20.0,
+        radius=3.5,
+    )
+
+    assert len(plate) >= 4
+    bottom_y = min(point.y for point in plate)
+    bottom_points = [point for point in plate if abs(point.y - bottom_y) < 1e-6]
+    assert len(bottom_points) == 2
+
+    bottom_left = bottom_points[0]
+    bottom_right = bottom_points[1]
+    assert plate[1].x < bottom_left.x - 1e-6
+    assert plate[-2].x > bottom_right.x + 1e-6
+
+
 def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     records = []
     for index in range(48):

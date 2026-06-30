@@ -2052,6 +2052,44 @@ def _base_plate_extreme_cap(points, target_y, radius, margin, use_lower_side):
     return (min_x + max_x) * 0.5, max_x - min_x
 
 
+def _trim_base_plate_cap_samples(
+    ys,
+    left_xs,
+    right_xs,
+    cap_left_x,
+    cap_right_x,
+    from_start,
+):
+    if len(left_xs) != len(right_xs) or len(ys) != len(left_xs):
+        return
+    if len(left_xs) <= 2:
+        return
+
+    def inside_cap(index):
+        return (
+            left_xs[index] > cap_left_x + POINT_TOLERANCE
+            or right_xs[index] < cap_right_x - POINT_TOLERANCE
+        )
+
+    if from_start:
+        trim_count = 0
+        while trim_count < len(left_xs) - 2 and inside_cap(trim_count):
+            trim_count += 1
+        if trim_count:
+            del ys[:trim_count]
+            del left_xs[:trim_count]
+            del right_xs[:trim_count]
+        return
+
+    trim_count = 0
+    while trim_count < len(left_xs) - 2 and inside_cap(len(left_xs) - 1 - trim_count):
+        trim_count += 1
+    if trim_count:
+        del ys[-trim_count:]
+        del left_xs[-trim_count:]
+        del right_xs[-trim_count:]
+
+
 def _air_duct_base_plate_polygon(
     component_polygons,
     margin,
@@ -2162,6 +2200,14 @@ def _air_duct_base_plate_polygon(
             bottom_cap_center,
             bottom_cap_width,
         )
+        _trim_base_plate_cap_samples(
+            ys,
+            left_xs,
+            right_xs,
+            bottom_left_x,
+            bottom_right_x,
+            from_start=True,
+        )
     if upper_flat_y is not None:
         top_left_x, top_right_x = left_xs[-1], right_xs[-1]
     else:
@@ -2173,6 +2219,14 @@ def _air_duct_base_plate_polygon(
             False,
             top_cap_center,
             top_cap_width,
+        )
+        _trim_base_plate_cap_samples(
+            ys,
+            left_xs,
+            right_xs,
+            top_left_x,
+            top_right_x,
+            from_start=False,
         )
 
     left_side = [Vec2(bottom_left_x, bottom_y)]
