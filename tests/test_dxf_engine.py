@@ -1766,6 +1766,19 @@ def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
         params,
         placements,
     )
+    grouped, total_length = circle_generator._air_duct_group_records(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    region_data = circle_generator._air_duct_base_plate_region_data(
+        grouped,
+        total_length,
+        params,
+    )
+    flat_bounds = circle_generator._air_duct_base_plate_flat_bounds_from_regions(region_data)
 
     contours = circle_generator._air_duct_base_plate_contours(
         doc,
@@ -1775,17 +1788,23 @@ def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
         kept_items,
     )
     by_region = {contour["region"]: contour["points"] for contour in contours}
-    axis_y = circle_generator._chain_axis(doc, handles)["center"].y
-    upper_split = axis_y + params.capsule_axis_gap_above_distance
-    lower_split = axis_y - params.capsule_axis_gap_below_distance
 
     assert {"upper_outer", "upper_inner", "lower_inner", "lower_outer"} <= set(by_region)
-    assert abs(min(point.y for point in by_region["upper_outer"]) - upper_split) < 1e-6
-    assert abs(max(point.y for point in by_region["upper_inner"]) - upper_split) < 1e-6
-    assert abs(min(point.y for point in by_region["upper_inner"]) - axis_y) < 1e-6
-    assert abs(max(point.y for point in by_region["lower_inner"]) - axis_y) < 1e-6
-    assert abs(min(point.y for point in by_region["lower_inner"]) - lower_split) < 1e-6
-    assert abs(max(point.y for point in by_region["lower_outer"]) - lower_split) < 1e-6
+    ordered_regions = sorted(
+        region_data,
+        key=lambda region: region_data[region]["center_y"],
+        reverse=True,
+    )
+    for upper_region, lower_region in zip(ordered_regions, ordered_regions[1:]):
+        expected_split = (
+            region_data[upper_region]["min_y"]
+            + region_data[lower_region]["max_y"]
+        ) * 0.5
+
+        assert abs(flat_bounds[upper_region][0] - expected_split) < 1e-6
+        assert abs(flat_bounds[lower_region][1] - expected_split) < 1e-6
+        assert abs(min(point.y for point in by_region[upper_region]) - expected_split) < 1e-6
+        assert abs(max(point.y for point in by_region[lower_region]) - expected_split) < 1e-6
 
 
 def test_air_duct_base_plate_end_cap_stays_near_real_tip_width():

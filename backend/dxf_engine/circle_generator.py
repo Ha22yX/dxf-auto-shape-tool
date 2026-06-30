@@ -2186,36 +2186,71 @@ def _air_duct_base_plate_polygon(
     return _dedupe_air_duct_points(left_side + right_side)
 
 
-def _air_duct_base_plate_flat_bounds(axis, params):
-    if not axis:
-        return {}
-    axis_y = axis["center"].y
-    above_gap = max(0.0, getattr(params, "capsule_axis_gap_above_distance", 0.0))
-    below_gap = max(0.0, getattr(params, "capsule_axis_gap_below_distance", 0.0))
-    bounds = {"all": (None, None)}
+def _air_duct_base_plate_region_data(grouped, total_length, params):
+    region_data = {}
+    for region in _ordered_air_duct_regions(grouped):
+        component_polygons = _air_duct_component_polygons_for_region(
+            grouped[region],
+            total_length,
+            params,
+            region,
+        )
+        points = [
+            point
+            for polygon in component_polygons
+            for point in polygon
+        ]
+        if not points:
+            continue
+        min_y = min(point.y for point in points)
+        max_y = max(point.y for point in points)
+        region_data[region] = {
+            "records": grouped[region],
+            "component_polygons": component_polygons,
+            "min_y": min_y,
+            "max_y": max_y,
+            "center_y": (min_y + max_y) * 0.5,
+        }
+    return region_data
 
-    if above_gap > POINT_TOLERANCE:
-        bounds["upper_inner"] = (axis_y, axis_y + above_gap)
-        bounds["upper_outer"] = (axis_y + above_gap, None)
-    else:
-        bounds["upper"] = (axis_y, None)
 
-    if below_gap > POINT_TOLERANCE:
-        bounds["lower_inner"] = (axis_y - below_gap, axis_y)
-        bounds["lower_outer"] = (None, axis_y - below_gap)
-    else:
-        bounds["lower"] = (None, axis_y)
-
-    return bounds
-
-
-def _air_duct_base_plate_region_contours(records, total_length, params, region, flat_bounds=None):
-    component_polygons = _air_duct_component_polygons_for_region(
-        records,
-        total_length,
-        params,
-        region,
+def _air_duct_base_plate_flat_bounds_from_regions(region_data):
+    bounds = {
+        region: [None, None]
+        for region in region_data
+    }
+    ordered_regions = sorted(
+        region_data,
+        key=lambda region: region_data[region]["center_y"],
+        reverse=True,
     )
+    for upper_region, lower_region in zip(ordered_regions, ordered_regions[1:]):
+        upper_low_y = region_data[upper_region]["min_y"]
+        lower_high_y = region_data[lower_region]["max_y"]
+        split_y = (upper_low_y + lower_high_y) * 0.5
+        bounds[upper_region][0] = split_y
+        bounds[lower_region][1] = split_y
+    return {
+        region: tuple(values)
+        for region, values in bounds.items()
+    }
+
+
+def _air_duct_base_plate_region_contours(
+    records,
+    total_length,
+    params,
+    region,
+    flat_bounds=None,
+    component_polygons=None,
+):
+    if component_polygons is None:
+        component_polygons = _air_duct_component_polygons_for_region(
+            records,
+            total_length,
+            params,
+            region,
+        )
     lower_flat_y, upper_flat_y = flat_bounds or (None, None)
     polygon = _air_duct_base_plate_polygon(
         component_polygons,
@@ -2281,18 +2316,18 @@ def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
         return []
 
     offset = _air_duct_template_offset(doc, chain)
-    flat_bounds_by_region = _air_duct_base_plate_flat_bounds(
-        _chain_axis(doc, chain),
-        params,
-    )
+    region_data = _air_duct_base_plate_region_data(grouped, total_length, params)
+    flat_bounds_by_region = _air_duct_base_plate_flat_bounds_from_regions(region_data)
     contours = []
-    for region in _ordered_air_duct_regions(grouped):
+    for region in _ordered_air_duct_regions(region_data):
+        data = region_data[region]
         for contour in _air_duct_base_plate_region_contours(
-            grouped[region],
+            data["records"],
             total_length,
             params,
             region,
             flat_bounds=flat_bounds_by_region.get(region),
+            component_polygons=data["component_polygons"],
         ):
             shifted = [point + offset for point in contour["points"]]
             contours.append({
