@@ -11,7 +11,7 @@ import ezdxf
 from ezdxf.math import Vec2
 from fastapi import UploadFile
 from backend.app import upload_dxf, download_dxf, _apply_selection, _select_handle
-from backend.config import DEFAULT_PARAMS
+from backend.config import AIR_DUCT_LAYER, DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
 
@@ -24,6 +24,51 @@ def make_rect_doc():
     msp.add_line((100, 80), (0, 80))
     msp.add_line((0, 80), (0, 0))
     return doc
+
+
+def air_duct_point_inside_or_on(point, polygon, tolerance=1e-3):
+    return circle_generator._point_in_polygon(point, polygon) or any(
+        circle_generator._point_on_segment(
+            point,
+            polygon[index],
+            polygon[(index + 1) % len(polygon)],
+            tolerance=tolerance,
+        )
+        for index in range(len(polygon))
+    )
+
+
+def circle_extent_points(center, radius, samples=24):
+    return [
+        center + Vec2(math.cos(2.0 * math.pi * index / samples) * radius,
+                      math.sin(2.0 * math.pi * index / samples) * radius)
+        for index in range(samples)
+    ]
+
+
+def assert_air_ducts_cover_kept_circles(doc, chain, params, placements, kept_items):
+    contours = circle_generator._air_duct_contours(doc, chain, params, placements, kept_items)
+    offset = circle_generator._air_duct_template_offset(doc, chain)
+    axis = circle_generator._chain_axis(doc, chain)
+    by_region = {}
+    for contour in contours:
+        by_region.setdefault(contour["region"], []).append(
+            [point - offset for point in contour["points"]]
+        )
+
+    for item in kept_items:
+        region = circle_generator._air_duct_region_key(
+            placements[item["placement_index"]],
+            axis,
+            params,
+        )
+        polygons = by_region.get(region, [])
+        assert polygons
+        for point in circle_extent_points(item["center"], params.circle_radius):
+            assert any(
+                air_duct_point_inside_or_on(point, polygon)
+                for polygon in polygons
+            ), (region, item["placement_index"], item["circle_index"], point)
 
 
 def test_svg_export():
@@ -120,6 +165,42 @@ def test_closed_multi_entity_outline_normals_point_to_same_side_as_whole_shape()
     center = geometry_utils.chain_centroid(samples)
     for sample, normal in zip(samples, normals):
         assert normal.dot(center - sample.point) > 0
+
+
+def test_single_closed_spline_is_treated_as_closed_outline_for_inward_rays():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    spline = msp.add_spline(
+        fit_points=[(100, 0), (0, 100), (-100, 0), (0, -100), (100, 0)]
+    )
+
+    chain = path_analyzer.build_chain(doc, [spline.dxf.handle])
+    info = path_analyzer.get_chain_info(doc, chain)
+
+    assert info["is_closed"]
+
+    params = CircleParams(
+        ray_direction="inward",
+        ray_count=16,
+        circles_per_ray=1,
+        circle_spacing=10.0,
+        ray_offset=10.0,
+        top_gap_distance=0.0,
+    )
+    placements = circle_generator.compute_placements(
+        doc,
+        chain,
+        params,
+        closed=info["is_closed"],
+    )
+    boundary = geometry_utils.sample_chain(doc, chain, 401, closed=True, smooth_tangents=False)
+    polygon = [sample.point for sample in boundary]
+
+    assert placements
+    assert all(
+        geometry_utils.point_in_polygon(placement["centers"][0], polygon)
+        for placement in placements
+    )
 
 
 def test_circle_generator():
@@ -1021,3 +1102,599 @@ def test_path_analyzer_with_polyline_bulge():
     info = path_analyzer.get_chain_info(doc, chain)
     assert info["is_closed"]
     assert info["total_length"] > 8  # longer than straight rectangle
+
+
+def test_preview_includes_air_duct_templates():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=12,
+        top_gap_distance=0.0,
+        air_duct_enabled=True,
+        air_duct_inlet_distance=10.0,
+    )
+    base = svg_exporter.doc_to_base_svg(doc, dark=True)
+
+    preview = circle_generator.compute_preview_geometry(
+        doc,
+        handles,
+        params,
+        closed=True,
+        bounds=base.bounds,
+        scale=base.scale,
+    )
+
+    assert preview["air_ducts"]
+    assert all(duct["d"].startswith("M ") and duct["d"].endswith("Z") for duct in preview["air_ducts"])
+    assert len(preview["air_ducts"]) == len(
+        {(duct["region"], duct.get("role")) for duct in preview["air_ducts"]}
+    )
+    assert preview["air_duct_template_offset"]["x"] > 0
+
+
+def test_air_duct_record_uses_kept_circles_after_overlap_pruning():
+    placement = {
+        "point": Vec2(0, 0),
+        "normal": Vec2(1, 0),
+        "centers": [Vec2(10, 0), Vec2(20, 0), Vec2(30, 0)],
+        "source_distance": 0.0,
+    }
+    kept_items = [
+        {
+            "center": Vec2(30, 0),
+            "placement_index": 0,
+            "circle_index": 2,
+        }
+    ]
+
+    record = circle_generator._air_duct_record(placement, 2.0, kept_items)
+
+    assert (record["near"] - Vec2(28, 0)).magnitude < 1e-9
+    assert (record["far"] - Vec2(32, 0)).magnitude < 1e-9
+    assert record["circle_centers"] == [Vec2(30, 0)]
+
+
+def test_air_duct_contours_use_full_ray_row_to_avoid_pruned_hole_dents():
+    placements = [
+        {
+            "point": Vec2(0, 0),
+            "normal": Vec2(1, 0),
+            "centers": [Vec2(10, 0), Vec2(20, 0), Vec2(30, 0)],
+            "source_distance": 0.0,
+        },
+        {
+            "point": Vec2(0, 20),
+            "normal": Vec2(1, 0),
+            "centers": [Vec2(10, 20), Vec2(20, 20), Vec2(30, 20)],
+            "source_distance": 20.0,
+        },
+    ]
+    kept_items = [
+        {"center": Vec2(30, 0), "placement_index": 0, "circle_index": 2},
+        {"center": Vec2(10, 20), "placement_index": 1, "circle_index": 0},
+    ]
+    params = CircleParams(circle_radius=2.0)
+
+    records = []
+    kept_by_placement = circle_generator._items_by_placement(kept_items)
+    for index, placement in enumerate(placements):
+        assert kept_by_placement[index]
+        records.append(circle_generator._air_duct_record(placement, params.circle_radius, None))
+
+    assert records[0]["near"].isclose(Vec2(8, 0))
+    assert records[0]["far"].isclose(Vec2(32, 0))
+    assert records[1]["near"].isclose(Vec2(8, 20))
+    assert records[1]["far"].isclose(Vec2(32, 20))
+
+
+def test_air_duct_contours_cover_kept_circles_after_pruning():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=3,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=18,
+        top_gap_distance=0.0,
+        air_duct_enabled=True,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    kept_items, removed_items = circle_generator._overlap_pruned_circle_items(
+        doc,
+        handles,
+        params,
+        placements,
+    )
+
+    assert kept_items
+    assert removed_items
+    assert_air_ducts_cover_kept_circles(doc, handles, params, placements, kept_items)
+
+
+def test_air_duct_default_split_keeps_upper_and_lower_regions_separate():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=24,
+        top_gap_distance=0.0,
+        capsule_axis_gap_above_distance=0.0,
+        capsule_axis_gap_below_distance=0.0,
+        air_duct_enabled=True,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    kept_items, _ = circle_generator._overlap_pruned_circle_items(
+        doc,
+        handles,
+        params,
+        placements,
+    )
+
+    contours = circle_generator._air_duct_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    regions = {contour["region"] for contour in contours}
+
+    assert regions == {"upper", "lower"}
+    assert all(contour["role"].startswith("outline") for contour in contours)
+
+
+def test_air_duct_inlet_is_integrated_into_region_outline():
+    records = [
+        {
+            "near": Vec2(0, 10),
+            "far": Vec2(0, 30),
+            "width": 20.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+        {
+            "near": Vec2(100, 10),
+            "far": Vec2(100, 30),
+            "width": 20.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, 0),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=5.0)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=200.0,
+        params=params,
+        region="upper",
+    )
+
+    assert len(contours) == 1
+    points = contours[0]["points"]
+    assert any(abs(point.y - 15.0) < 1e-9 for point in points)
+    assert any(abs(point.y - 30.0) < 1e-9 for point in points)
+
+
+def test_air_duct_inlet_edges_align_to_curve_endpoints_without_diagonal_bridges():
+    records = [
+        {
+            "near": Vec2(10, 10),
+            "far": Vec2(0, 30),
+            "width": 20.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+        {
+            "near": Vec2(50, 20),
+            "far": Vec2(50, 40),
+            "width": 20.0,
+            "source_distance": 50.0,
+            "source_point": Vec2(50, 0),
+        },
+        {
+            "near": Vec2(90, 10),
+            "far": Vec2(100, 30),
+            "width": 20.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, 0),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=5.0)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=200.0,
+        params=params,
+        region="upper",
+    )
+
+    assert len(contours) == 1
+    points = contours[0]["points"]
+    assert any(abs(point.y - 15.0) < 1e-9 for point in points)
+    assert max(point.y for point in points) >= 35.0
+    assert min(point.y for point in points) < 15.0
+    assert max(point.y for point in points) > 35.0
+
+
+def test_air_duct_outline_orients_reversed_records_before_adding_inlet():
+    records = [
+        {
+            "near": Vec2(100, 10),
+            "far": Vec2(100, 30),
+            "width": 20.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, 0),
+        },
+        {
+            "near": Vec2(0, 10),
+            "far": Vec2(0, 30),
+            "width": 20.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=5.0)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=200.0,
+        params=params,
+        region="upper",
+    )
+
+    assert len(contours) == 1
+    points = contours[0]["points"]
+    assert points[0].x <= points[1].x
+    assert any(abs(point.y - 15.0) < 1e-9 for point in points)
+
+
+def test_air_duct_inlet_clamps_to_sloped_outer_boundary_without_tabs():
+    records = [
+        {
+            "near": Vec2(10, 10),
+            "far": Vec2(0, 30),
+            "width": 20.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+        {
+            "near": Vec2(50, 20),
+            "far": Vec2(50, 40),
+            "width": 20.0,
+            "source_distance": 50.0,
+            "source_point": Vec2(50, 0),
+        },
+        {
+            "near": Vec2(90, 10),
+            "far": Vec2(100, 30),
+            "width": 20.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, 0),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=5.0)
+    ordered = circle_generator._ordered_air_duct_records(records, 200.0)
+    polygon = circle_generator._air_duct_component_polygon(ordered)
+
+    inlet = circle_generator._air_duct_inlet_points(ordered, params, "upper", [polygon])
+
+    assert inlet[0].x > min(point.x for record in records for point in (record["near"], record["far"]))
+    assert inlet[2].x < max(point.x for record in records for point in (record["near"], record["far"]))
+    near_extents = circle_generator._horizontal_extents_at_y([polygon], inlet[0].y)
+    far_extents = circle_generator._horizontal_extents_at_y([polygon], inlet[2].y)
+    assert near_extents is not None
+    assert far_extents is not None
+    assert inlet[0].x >= near_extents[0] - 1e-9
+    assert inlet[1].x <= near_extents[1] + 1e-9
+    assert inlet[3].x >= far_extents[0] - 1e-9
+    assert inlet[2].x <= far_extents[1] + 1e-9
+
+
+def test_air_duct_inner_region_does_not_bridge_disconnected_side_tops():
+    records = [
+        {
+            "near": Vec2(0, 0),
+            "far": Vec2(10, 0),
+            "width": 10.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+        {
+            "near": Vec2(0, 100),
+            "far": Vec2(10, 100),
+            "width": 10.0,
+            "source_distance": 10.0,
+            "source_point": Vec2(0, 100),
+        },
+        {
+            "near": Vec2(100, 0),
+            "far": Vec2(110, 0),
+            "width": 10.0,
+            "source_distance": 1000.0,
+            "source_point": Vec2(100, 0),
+        },
+        {
+            "near": Vec2(100, 100),
+            "far": Vec2(110, 100),
+            "width": 10.0,
+            "source_distance": 1010.0,
+            "source_point": Vec2(100, 100),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=10.0)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=2000.0,
+        params=params,
+        region="upper_inner",
+    )
+
+    assert contours
+    for contour in contours:
+        points = contour["points"]
+        for index, point in enumerate(points):
+            next_point = points[(index + 1) % len(points)]
+            if abs(point.y - 100.0) < 1e-9 and abs(next_point.y - 100.0) < 1e-9:
+                assert abs(point.x - next_point.x) <= 20.0
+
+
+def test_air_duct_inner_region_keeps_same_side_connected_across_chain_wrap():
+    records = []
+    for source_distance, x, y in [
+        (20.0, 100.0, 0.0),
+        (100.0, 100.0, 20.0),
+        (6600.0, 100.0, 40.0),
+        (7200.0, 100.0, 60.0),
+        (2000.0, 0.0, 0.0),
+        (2200.0, 0.0, 20.0),
+        (2400.0, 0.0, 40.0),
+    ]:
+        records.append({
+            "near": Vec2(x, y),
+            "far": Vec2(x + 10.0, y),
+            "width": 10.0,
+            "source_distance": source_distance,
+            "source_point": Vec2(x, y),
+        })
+
+    components = circle_generator._split_air_duct_components(
+        records,
+        total_length=7300.0,
+        split_disconnected=True,
+    )
+
+    assert sorted(len(component) for component in components) == [3, 4]
+    assert any(
+        len(component) == 4
+        and {record["source_point"].x for record in component} == {100.0}
+        for component in components
+    )
+
+
+def test_air_duct_inlet_tangent_to_side_ducts_unions_as_one_outline():
+    records = []
+    for source_distance, near, far in [
+        (3180.14, (1851.76, -2458.14), (1893.75, -2457.60)),
+        (3218.30, (1851.27, -2419.98), (1893.26, -2419.44)),
+        (3256.47, (1850.78, -2381.81), (1892.78, -2381.27)),
+        (3294.64, (1850.29, -2343.65), (1892.29, -2343.11)),
+        (3332.81, (1849.80, -2305.48), (1891.80, -2304.95)),
+        (6771.53, (2595.74, -2305.22), (2553.75, -2304.68)),
+        (6809.70, (2595.25, -2343.38), (2553.26, -2342.84)),
+        (6847.86, (2594.76, -2381.55), (2552.77, -2381.01)),
+        (6886.03, (2594.28, -2419.71), (2552.28, -2419.17)),
+        (6924.20, (2593.79, -2457.87), (2551.79, -2457.34)),
+    ]:
+        near_point = Vec2(*near)
+        far_point = Vec2(*far)
+        records.append({
+            "near": near_point,
+            "far": far_point,
+            "width": (far_point - near_point).magnitude,
+            "source_distance": source_distance,
+            "source_point": near_point,
+        })
+    params = CircleParams(circle_radius=3.5, air_duct_inlet_distance=75.5)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=7675.0,
+        params=params,
+        region="upper_inner",
+    )
+
+    assert len(contours) == 1
+    points = contours[0]["points"]
+    assert min(point.x for point in points) < 1900
+    assert max(point.x for point in points) > 2550
+
+
+def test_air_duct_outline_contains_all_circle_extent_points():
+    records = [
+        {
+            "near": Vec2(0, -100),
+            "far": Vec2(10, -100),
+            "width": 10.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, -100),
+        },
+        {
+            "near": Vec2(50, -130),
+            "far": Vec2(60, -130),
+            "width": 10.0,
+            "source_distance": 50.0,
+            "source_point": Vec2(50, -130),
+        },
+        {
+            "near": Vec2(100, -100),
+            "far": Vec2(110, -100),
+            "width": 10.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, -100),
+        },
+    ]
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=10.0)
+
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=200.0,
+        params=params,
+        region="lower",
+    )
+
+    def inside_or_on(point, polygon):
+        return circle_generator._point_in_polygon(point, polygon) or any(
+            circle_generator._point_on_segment(
+                point,
+                polygon[index],
+                polygon[(index + 1) % len(polygon)],
+            )
+            for index in range(len(polygon))
+        )
+
+    extent_points = [
+        point
+        for record in records
+        for point in (record["near"], record["far"])
+    ]
+    assert all(
+        any(inside_or_on(point, contour["points"]) for contour in contours)
+        for point in extent_points
+    )
+
+
+def test_air_duct_curve_removes_local_hairpin_at_rounded_foot():
+    points = [
+        Vec2(343.328, 122.094),
+        Vec2(332.651, 124.912),
+        Vec2(338.770, 121.356),
+        Vec2(332.629, 128.808),
+        Vec2(322.354, 146.829),
+    ]
+
+    cleaned = circle_generator._remove_hairpin_points(points)
+
+    assert len(cleaned) == 4
+    for previous, current, next_point in zip(cleaned, cleaned[1:], cleaned[2:]):
+        incoming = current - previous
+        outgoing = next_point - current
+        assert incoming.normalize().dot(outgoing.normalize()) >= -0.82
+
+
+def test_air_duct_component_extends_endpoints_to_cover_end_hole_radius():
+    records = [
+        {
+            "near": Vec2(0, 0),
+            "far": Vec2(0, 40),
+            "width": 40.0,
+            "source_distance": 0.0,
+            "source_point": Vec2(0, 0),
+        },
+        {
+            "near": Vec2(100, 0),
+            "far": Vec2(100, 40),
+            "width": 40.0,
+            "source_distance": 100.0,
+            "source_point": Vec2(100, 0),
+        },
+    ]
+
+    polygon = circle_generator._air_duct_component_polygon(records, endpoint_margin=5.0)
+    xs = [point.x for point in polygon]
+
+    assert min(xs) <= -5.0 + 1e-6
+    assert max(xs) >= 105.0 - 1e-6
+
+
+def test_dense_air_duct_region_outputs_single_outline_without_interior_inlet():
+    records = []
+    for index in range(48):
+        x = float(index * 5)
+        near = Vec2(x, 10.0 + math.sin(index / 8.0) * 3.0)
+        far = Vec2(x, 42.0 + math.sin(index / 8.0) * 3.0)
+        records.append({
+            "near": near,
+            "far": far,
+            "near_center": near,
+            "far_center": far,
+            "circle_centers": [near + (far - near) * 0.5],
+            "radius": 2.0,
+            "width": (far - near).magnitude,
+            "source_distance": float(index * 5),
+            "source_point": Vec2(x, 0.0),
+        })
+
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=8.0)
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=300.0,
+        params=params,
+        region="upper",
+    )
+
+    assert len(contours) == 1
+    assert contours[0]["role"] == "outline_0"
+
+
+def test_dense_split_air_duct_region_bridges_sides_as_single_outline():
+    records = []
+    for side_x, distance_base in [(0.0, 0.0), (120.0, 1000.0)]:
+        for index in range(24):
+            y = float(index * 5)
+            near = Vec2(side_x, y)
+            far = Vec2(side_x + 18.0, y)
+            records.append({
+                "near": near,
+                "far": far,
+                "near_center": near,
+                "far_center": far,
+                "circle_centers": [near + (far - near) * 0.5],
+                "radius": 2.0,
+                "width": (far - near).magnitude,
+                "source_distance": distance_base + index * 5.0,
+                "source_point": near,
+            })
+
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=12.0)
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=2000.0,
+        params=params,
+        region="upper_inner",
+    )
+
+    assert len(contours) == 1
+    assert len(contours[0]["points"]) == 12
+
+
+def test_generate_circles_exports_air_duct_layer():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=12,
+        top_gap_distance=0.0,
+        air_duct_enabled=True,
+    )
+
+    circle_generator.generate_circles(doc, handles, params, closed=True)
+
+    air_duct_entities = [
+        entity
+        for entity in doc.modelspace()
+        if entity.dxf.layer == AIR_DUCT_LAYER
+    ]
+    assert air_duct_entities
+    assert all(entity.dxftype() == "LWPOLYLINE" and entity.closed for entity in air_duct_entities)

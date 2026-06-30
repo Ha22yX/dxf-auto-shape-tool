@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DXF 自动图形工具</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20260630-default-params">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260630-default-params">
+    <link rel="icon" type="image/svg+xml" href="/static/assets/app-icon.svg?v=20260630-icon">
+    <link rel="alternate icon" type="image/x-icon" href="/static/assets/app-icon.ico?v=20260630-icon">
+    <link rel="apple-touch-icon" href="/static/assets/app-icon.png?v=20260630-icon">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260630-air-duct-dim">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260630-air-duct-dim">
 </head>
 <body>
     <div class="app">
@@ -185,11 +188,38 @@
                     </section>
 
                     <section class="param-section">
+                        <h3>导风槽</h3>
+
+                    <div class="form-group toggle-group">
+                        <label for="param-air-duct-enabled">显示/导出导风槽</label>
+                        <input type="checkbox" id="param-air-duct-enabled" checked>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="air_duct_inlet_distance">
+                        <div class="slider-header">
+                            <label>横向吸风口距离</label>
+                            <div class="input-with-unit">
+                                <input type="text" inputmode="decimal" id="param-air-duct-inlet-distance" value="20" data-step="0.5" data-min="0" data-max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-air-duct-inlet-distance-slider" min="0" max="200" step="0.5" value="20">
+                        <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
+                    </div>
+
+                    </section>
+
+                    <section class="param-section">
                         <h3>显示</h3>
 
                     <div class="form-group toggle-group">
                         <label for="toggle-preview">显示生成图</label>
                         <input type="checkbox" id="toggle-preview" checked>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label for="toggle-air-duct-compare-overlay">导风槽叠加对比</label>
+                        <input type="checkbox" id="toggle-air-duct-compare-overlay">
                     </div>
 
                     </section>
@@ -214,11 +244,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260630-hover-select"></script>
-    <script src="/static/js/websocket.js?v=20260630-hover-select"></script>
-    <script src="/static/js/svg_viewer.js?v=20260630-hover-select"></script>
-    <script src="/static/js/selector.js?v=20260630-hover-select"></script>
-    <script src="/static/js/parameter_panel.js?v=20260630-hover-select"></script>
-    <script src="/static/js/app.js?v=20260630-hover-select"></script>
+    <script src="/static/js/api.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/websocket.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/svg_viewer.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/selector.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/parameter_panel.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/app.js?v=20260630-air-duct-dim"></script>
 </body>
 </html>

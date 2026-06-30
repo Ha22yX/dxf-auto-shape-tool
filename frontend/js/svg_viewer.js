@@ -16,6 +16,7 @@ class SvgViewer {
         this.viewport = null;   // pan/zoom wrapper group
         this.overlay = null;    // generated circles / rays / selection highlight
         this.generatedLayer = null; // toggleable subgroup for circles + rays
+        this.baseLayer = null;
         this.hoverHitLayer = null;
         this.hoverVisualLayer = null;
         this.hoverOwners = new Map();
@@ -26,6 +27,7 @@ class SvgViewer {
         this.capsuleGapGuideVisible = false;
         this._renderFrame = null;
         this._pendingGeneratedRender = null;
+        this.airDuctCompareMode = false;
 
         // View transform
         this.scale = 1;
@@ -65,9 +67,12 @@ class SvgViewer {
         // an overlay group inside it so the overlay transforms with the drawing.
         const viewport = document.createElementNS(SVG_NS, "g");
         viewport.setAttribute("id", "dxf-viewport");
+        const baseLayer = document.createElementNS(SVG_NS, "g");
+        baseLayer.setAttribute("id", "dxf-base-layer");
         while (this.svg.firstChild) {
-            viewport.appendChild(this.svg.firstChild);
+            baseLayer.appendChild(this.svg.firstChild);
         }
+        viewport.appendChild(baseLayer);
         this.svg.appendChild(viewport);
 
         const overlay = document.createElementNS(SVG_NS, "g");
@@ -97,6 +102,7 @@ class SvgViewer {
         const hitLayer = this._buildLocalHoverHitLayer(viewport, hoverPaths);
 
         this.viewport = viewport;
+        this.baseLayer = baseLayer;
         this.overlay = overlay;
         this.hoverPath = hoverPath;
         this.generatedLayer = generatedLayer;
@@ -115,6 +121,7 @@ class SvgViewer {
         this.translateX = 0;
         this.translateY = 0;
         this._hasSetInitialView = true;
+        this._applyAirDuctCompareMode();
         this._applyTransform();
         if (window.App && typeof window.App._ensurePreviewLoading === "function") {
             window.App._ensurePreviewLoading();
@@ -170,6 +177,22 @@ class SvgViewer {
 
     _generatedGeometryMarkup(geometry) {
         const parts = [];
+        const airDucts = geometry.air_ducts || [];
+        if (airDucts.length) {
+            const transform = this._airDuctCompareTransform(geometry);
+            const attrs = transform ? ` transform="${transform}"` : "";
+            parts.push(`<g class="air-duct-layer"${attrs}>`);
+            for (const duct of airDucts) {
+                if (!duct || !duct.d) continue;
+                parts.push(
+                    `<path d="${this._escapeAttr(duct.d)}" fill="none" stroke="#7DD3FC" `
+                    + `stroke-width="1.7" stroke-opacity="0.92" stroke-linecap="round" `
+                    + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
+                );
+            }
+            parts.push("</g>");
+        }
+
         const capsules = geometry.capsules || [];
         for (const c of capsules) {
             if (!c || !c.d) continue;
@@ -208,6 +231,36 @@ class SvgViewer {
             );
         }
         return parts.join("");
+    }
+
+    setAirDuctCompareMode(enabled) {
+        this.airDuctCompareMode = Boolean(enabled);
+        this._applyAirDuctCompareMode();
+        if (this.lastGeometry) {
+            this._renderGeneratedGeometry(this.lastGeometry, this.lastShowGenerated, true);
+        }
+    }
+
+    _applyAirDuctCompareMode() {
+        if (!this.baseLayer) return;
+        this.baseLayer.classList.toggle("air-duct-compare-original", this.airDuctCompareMode);
+        if (this.overlay) {
+            this.overlay.classList.toggle("air-duct-compare-mode", this.airDuctCompareMode);
+        }
+        if (this.generatedLayer) {
+            this.generatedLayer.classList.toggle("air-duct-compare-original", this.airDuctCompareMode);
+        }
+    }
+
+    _airDuctCompareTransform(geometry) {
+        if (!this.airDuctCompareMode || !geometry || !geometry.air_duct_template_offset) {
+            return "";
+        }
+        const offset = geometry.air_duct_template_offset;
+        const dx = -Number(offset.x || 0);
+        const dy = -Number(offset.y || 0);
+        if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return "";
+        return `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`;
     }
 
     _fmt(value) {

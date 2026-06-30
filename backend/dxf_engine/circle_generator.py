@@ -11,7 +11,7 @@ import ezdxf
 from ezdxf.math import Vec2
 
 from backend.state import CircleParams
-from backend.config import GENERATED_LAYER, POINT_TOLERANCE
+from backend.config import GENERATED_LAYER, POINT_TOLERANCE, AIR_DUCT_LAYER
 from backend.dxf_engine import geometry_utils as geom
 
 
@@ -562,6 +562,1295 @@ def _add_capsule_entities(msp, capsule):
     return handles
 
 
+def _chain_sample_bounds(doc, chain):
+    total = geom.chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+    count = max(65, min(2001, int(total / 3.0)))
+    samples = geom.sample_chain(doc, chain, count, closed=False)
+    if not samples:
+        return None
+    xs = [sample.point.x for sample in samples]
+    ys = [sample.point.y for sample in samples]
+    return {
+        "min_x": min(xs),
+        "max_x": max(xs),
+        "min_y": min(ys),
+        "max_y": max(ys),
+        "width": max(max(xs) - min(xs), 1.0),
+        "height": max(max(ys) - min(ys), 1.0),
+    }
+
+
+def _air_duct_template_offset(doc, chain):
+    bounds = _chain_sample_bounds(doc, chain)
+    if not bounds:
+        return Vec2(0, 0)
+    gap = max(bounds["width"] * 0.35, bounds["height"] * 0.08, 100.0)
+    return Vec2(bounds["width"] + gap, 0)
+
+
+def _air_duct_region_key(placement, axis, params):
+    if not axis:
+        return "all"
+
+    axis_y = axis["center"].y
+    dy = placement["point"].y - axis_y
+    if dy >= 0:
+        gap = max(0.0, getattr(params, "capsule_axis_gap_above_distance", 0.0))
+        if gap > 0:
+            return "upper_inner" if dy <= gap + POINT_TOLERANCE else "upper_outer"
+        return "upper"
+
+    gap = max(0.0, getattr(params, "capsule_axis_gap_below_distance", 0.0))
+    if gap > 0:
+        return "lower_inner" if abs(dy) <= gap + POINT_TOLERANCE else "lower_outer"
+    return "lower"
+
+
+def _air_duct_record(placement, radius, kept_items=None):
+    if radius <= 0:
+        return None
+    normal = placement.get("normal", Vec2(0, 1))
+    if normal.magnitude <= 1e-9:
+        return None
+    direction = normal.normalize()
+    origin = placement["point"]
+
+    if kept_items is not None:
+        if not kept_items:
+            return None
+        centers = [item["center"] for item in kept_items]
+    else:
+        centers = placement.get("centers") or []
+        if not centers:
+            return None
+
+    distances = [
+        (center - origin).dot(direction)
+        for center in centers
+    ]
+    if not distances:
+        return None
+    near_center_distance = min(distances)
+    far_center_distance = max(distances)
+    near_distance = near_center_distance - radius
+    far_distance = far_center_distance + radius
+    if far_distance <= near_distance + POINT_TOLERANCE:
+        return None
+    near_center = origin + direction * near_center_distance
+    far_center = origin + direction * far_center_distance
+    near = origin + direction * near_distance
+    far = origin + direction * far_distance
+    return {
+        "source_distance": placement.get("source_distance", 0.0),
+        "source_point": origin,
+        "circle_centers": centers,
+        "near_center": near_center,
+        "far_center": far_center,
+        "near": near,
+        "far": far,
+        "width": (far - near).magnitude,
+        "radius": radius,
+    }
+
+
+def _ordered_air_duct_records(records, total_length):
+    ordered = sorted(records, key=lambda record: record["source_distance"])
+    if len(ordered) <= 2 or total_length <= 1e-9:
+        return ordered
+
+    largest_gap = -1.0
+    break_index = 0
+    for index, record in enumerate(ordered):
+        current = record["source_distance"] % total_length
+        next_distance = ordered[(index + 1) % len(ordered)]["source_distance"] % total_length
+        if index == len(ordered) - 1:
+            next_distance += total_length
+        gap = next_distance - current
+        if gap > largest_gap:
+            largest_gap = gap
+            break_index = (index + 1) % len(ordered)
+    if break_index == 0:
+        oriented = ordered
+    else:
+        oriented = ordered[break_index:] + ordered[:break_index]
+    if len(oriented) >= 2 and oriented[0]["source_point"].x > oriented[-1]["source_point"].x:
+        oriented = list(reversed(oriented))
+    return oriented
+
+
+def _dedupe_air_duct_points(points):
+    cleaned = []
+    for point in points:
+        if cleaned and (point - cleaned[-1]).magnitude <= POINT_TOLERANCE:
+            continue
+        cleaned.append(point)
+    if len(cleaned) > 1 and (cleaned[0] - cleaned[-1]).magnitude <= POINT_TOLERANCE:
+        cleaned.pop()
+    return cleaned
+
+
+def _catmull_rom_closed(points, samples_per_segment=4):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 4:
+        return points
+
+    smoothed = []
+    count = len(points)
+    for index in range(count):
+        p0 = points[(index - 1) % count]
+        p1 = points[index]
+        p2 = points[(index + 1) % count]
+        p3 = points[(index + 2) % count]
+        for step in range(samples_per_segment):
+            t = step / samples_per_segment
+            t2 = t * t
+            t3 = t2 * t
+            x = 0.5 * (
+                2.0 * p1.x
+                + (-p0.x + p2.x) * t
+                + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2
+                + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3
+            )
+            y = 0.5 * (
+                2.0 * p1.y
+                + (-p0.y + p2.y) * t
+                + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2
+                + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3
+            )
+            smoothed.append(Vec2(x, y))
+    return _dedupe_air_duct_points(smoothed)
+
+
+def _remove_hairpin_points(points):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 4:
+        return points
+
+    changed = True
+    while changed and len(points) >= 4:
+        changed = False
+        cleaned = [points[0]]
+        index = 1
+        while index < len(points) - 1:
+            previous = cleaned[-1]
+            current = points[index]
+            next_point = points[index + 1]
+            incoming = current - previous
+            outgoing = next_point - current
+            if incoming.magnitude <= POINT_TOLERANCE or outgoing.magnitude <= POINT_TOLERANCE:
+                changed = True
+                index += 1
+                continue
+            dot = incoming.normalize().dot(outgoing.normalize())
+            # Very sharp backtracks are interpolation artifacts for this use
+            # case: the duct edge should follow a smooth envelope, not dip
+            # inward and immediately return.
+            if dot < -0.82:
+                shortcut = next_point - previous
+                if shortcut.magnitude <= max(incoming.magnitude + outgoing.magnitude, POINT_TOLERANCE):
+                    changed = True
+                    index += 1
+                    continue
+            cleaned.append(current)
+            index += 1
+        cleaned.append(points[-1])
+        points = _dedupe_air_duct_points(cleaned)
+    return points
+
+
+def _extend_open_curve_endpoints(points, distance):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 2 or distance <= POINT_TOLERANCE:
+        return points
+
+    first_direction = points[0] - points[1]
+    last_direction = points[-1] - points[-2]
+    extended = list(points)
+    if first_direction.magnitude > POINT_TOLERANCE:
+        extended.insert(0, points[0] + first_direction.normalize() * distance)
+    if last_direction.magnitude > POINT_TOLERANCE:
+        extended.append(points[-1] + last_direction.normalize() * distance)
+    return _dedupe_air_duct_points(extended)
+
+
+def _catmull_rom_open(points, samples_per_segment=4):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 3:
+        return points
+
+    # Use centripetal Catmull-Rom instead of the uniform variant. The uniform
+    # formula can create loops around high-curvature "feet"; centripetal
+    # parameterization keeps the curve much closer to the source envelope.
+    first = points[0] + (points[0] - points[1])
+    last = points[-1] + (points[-1] - points[-2])
+    padded = [first] + points + [last]
+
+    def next_t(t, a, b):
+        return t + max((b - a).magnitude, 1e-9) ** 0.5
+
+    def interpolate(a, b, ta, tb, t):
+        if abs(tb - ta) <= 1e-12:
+            return a
+        return a * ((tb - t) / (tb - ta)) + b * ((t - ta) / (tb - ta))
+
+    smoothed = []
+    for index in range(1, len(padded) - 2):
+        p0 = padded[index - 1]
+        p1 = padded[index]
+        p2 = padded[index + 1]
+        p3 = padded[index + 2]
+        t0 = 0.0
+        t1 = next_t(t0, p0, p1)
+        t2 = next_t(t1, p1, p2)
+        t3 = next_t(t2, p2, p3)
+        for step in range(samples_per_segment):
+            t = t1 + (t2 - t1) * step / samples_per_segment
+            a1 = interpolate(p0, p1, t0, t1, t)
+            a2 = interpolate(p1, p2, t1, t2, t)
+            a3 = interpolate(p2, p3, t2, t3, t)
+            b1 = interpolate(a1, a2, t0, t2, t)
+            b2 = interpolate(a2, a3, t1, t3, t)
+            smoothed.append(interpolate(b1, b2, t1, t2, t))
+    smoothed.append(points[-1])
+    return _dedupe_air_duct_points(smoothed)
+
+
+def _polyline_length(points):
+    total = 0.0
+    for index in range(1, len(points)):
+        total += (points[index] - points[index - 1]).magnitude
+    return total
+
+
+def _horizontal_intersection(a, b, y):
+    dy = b.y - a.y
+    if abs(dy) <= POINT_TOLERANCE:
+        return Vec2(a.x, y)
+    t = (y - a.y) / dy
+    t = max(0.0, min(1.0, t))
+    return Vec2(a.x + (b.x - a.x) * t, y)
+
+
+def _clip_polyline_to_horizontal(points, y, keep_above):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 2:
+        return points
+
+    def inside(point):
+        if keep_above:
+            return point.y >= y - POINT_TOLERANCE
+        return point.y <= y + POINT_TOLERANCE
+
+    segments = []
+    current = []
+    for index in range(len(points) - 1):
+        a = points[index]
+        b = points[index + 1]
+        a_inside = inside(a)
+        b_inside = inside(b)
+
+        if a_inside and not current:
+            current.append(a)
+
+        if a_inside and b_inside:
+            current.append(b)
+        elif a_inside and not b_inside:
+            current.append(_horizontal_intersection(a, b, y))
+            segments.append(_dedupe_air_duct_points(current))
+            current = []
+        elif not a_inside and b_inside:
+            current = [_horizontal_intersection(a, b, y), b]
+
+    if current:
+        segments.append(_dedupe_air_duct_points(current))
+
+    segments = [segment for segment in segments if len(segment) >= 2]
+    if not segments:
+        return points
+    return max(segments, key=_polyline_length)
+
+
+def _cross(a, b):
+    return a.x * b.y - a.y * b.x
+
+
+def _point_on_segment(point, a, b, tolerance=POINT_TOLERANCE):
+    ab = b - a
+    ap = point - a
+    if abs(_cross(ab, ap)) > tolerance:
+        return False
+    dot = ap.dot(ab)
+    if dot < -tolerance:
+        return False
+    if dot > ab.dot(ab) + tolerance:
+        return False
+    return True
+
+
+def _segment_intersection_params(a, b, c, d):
+    r = b - a
+    s = d - c
+    denominator = _cross(r, s)
+    if abs(denominator) <= POINT_TOLERANCE:
+        if abs(_cross(c - a, r)) <= POINT_TOLERANCE:
+            params = []
+            rr = r.dot(r)
+            if rr <= POINT_TOLERANCE:
+                return []
+            for point in (c, d):
+                if _point_on_segment(point, a, b):
+                    params.append((point - a).dot(r) / rr)
+            return params
+        return []
+    qp = c - a
+    t = _cross(qp, s) / denominator
+    u = _cross(qp, r) / denominator
+    if -POINT_TOLERANCE <= t <= 1.0 + POINT_TOLERANCE and -POINT_TOLERANCE <= u <= 1.0 + POINT_TOLERANCE:
+        return [max(0.0, min(1.0, t))]
+    return []
+
+
+def _split_segment_points(a, b, split_params):
+    params = [0.0, 1.0]
+    params.extend(max(0.0, min(1.0, value)) for value in split_params)
+    params = sorted(params)
+    deduped = []
+    for value in params:
+        if deduped and abs(value - deduped[-1]) <= 1e-9:
+            continue
+        deduped.append(value)
+
+    pieces = []
+    delta = b - a
+    for index in range(len(deduped) - 1):
+        start_t = deduped[index]
+        end_t = deduped[index + 1]
+        if end_t - start_t <= 1e-9:
+            continue
+        start = a + delta * start_t
+        end = a + delta * end_t
+        if (end - start).magnitude > POINT_TOLERANCE:
+            pieces.append((start, end))
+    return pieces
+
+
+def _point_in_polygon(point, polygon):
+    if len(polygon) < 3:
+        return False
+    for index, a in enumerate(polygon):
+        b = polygon[(index + 1) % len(polygon)]
+        if _point_on_segment(point, a, b):
+            return False
+
+    inside = False
+    j = len(polygon) - 1
+    for i, current in enumerate(polygon):
+        previous = polygon[j]
+        if (current.y > point.y) != (previous.y > point.y):
+            x_intersection = (
+                (previous.x - current.x)
+                * (point.y - current.y)
+                / (previous.y - current.y)
+                + current.x
+            )
+            if point.x < x_intersection:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _point_inside_or_on_polygon(point, polygon, tolerance=POINT_TOLERANCE):
+    if _point_in_polygon(point, polygon):
+        return True
+    return any(
+        _point_on_segment(
+            point,
+            polygon[index],
+            polygon[(index + 1) % len(polygon)],
+            tolerance=tolerance,
+        )
+        for index in range(len(polygon))
+    )
+
+
+def _point_in_rect(point, min_x, min_y, max_x, max_y):
+    return (
+        min_x + POINT_TOLERANCE < point.x < max_x - POINT_TOLERANCE
+        and min_y + POINT_TOLERANCE < point.y < max_y - POINT_TOLERANCE
+    )
+
+
+def _rect_edges(rect):
+    return [
+        (rect[0], rect[1]),
+        (rect[1], rect[2]),
+        (rect[2], rect[3]),
+        (rect[3], rect[0]),
+    ]
+
+
+def _polygon_edges(points):
+    return [
+        (points[index], points[(index + 1) % len(points)])
+        for index in range(len(points))
+    ]
+
+
+def _polygon_signed_area(points):
+    if len(points) < 3:
+        return 0.0
+    area = 0.0
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        area += point.x * next_point.y - next_point.x * point.y
+    return area * 0.5
+
+
+def _boundary_loops_from_segments(segments):
+    key_scale = max(POINT_TOLERANCE * 20.0, 1e-6)
+
+    def key(point):
+        return (round(point.x / key_scale), round(point.y / key_scale))
+
+    point_by_key = {}
+    segment_keys = set()
+    for start, end in segments:
+        if (end - start).magnitude <= POINT_TOLERANCE:
+            continue
+        start_key = key(start)
+        end_key = key(end)
+        if start_key == end_key:
+            continue
+        segment_key = tuple(sorted((start_key, end_key)))
+        if segment_key in segment_keys:
+            continue
+        segment_keys.add(segment_key)
+        point_by_key.setdefault(start_key, start)
+        point_by_key.setdefault(end_key, end)
+
+    if not segment_keys:
+        return []
+
+    outgoing = {}
+    for a_key, b_key in segment_keys:
+        outgoing.setdefault(a_key, []).append(b_key)
+        outgoing.setdefault(b_key, []).append(a_key)
+
+    for vertex_key, neighbors in outgoing.items():
+        origin = point_by_key[vertex_key]
+        neighbors.sort(
+            key=lambda neighbor_key: math.atan2(
+                point_by_key[neighbor_key].y - origin.y,
+                point_by_key[neighbor_key].x - origin.x,
+            )
+        )
+
+    visited = set()
+    loops = []
+    max_steps = max(16, len(segment_keys) * 4)
+
+    for start_key in outgoing:
+        for next_key in outgoing[start_key]:
+            edge = (start_key, next_key)
+            if edge in visited:
+                continue
+
+            loop_keys = []
+            current = start_key
+            following = next_key
+            for _ in range(max_steps):
+                visited.add((current, following))
+                loop_keys.append(current)
+                neighbors = outgoing.get(following, [])
+                if not neighbors:
+                    break
+                try:
+                    reverse_index = neighbors.index(current)
+                except ValueError:
+                    break
+                # Keep the traced face on a consistent side by taking the
+                # previous directed edge in angular order. This avoids the
+                # arbitrary branch choices that used to drop inlet/duct edges.
+                next_following = neighbors[(reverse_index - 1) % len(neighbors)]
+                current, following = following, next_following
+                if current == start_key and following == next_key:
+                    points = _dedupe_air_duct_points(
+                        [point_by_key[item] for item in loop_keys]
+                    )
+                    if len(points) >= 3 and abs(_polygon_signed_area(points)) > POINT_TOLERANCE:
+                        loops.append(points)
+                    break
+            else:
+                break
+
+    unique_loops = {}
+    for loop in loops:
+        loop_keys = [key(point) for point in loop]
+        canonical = min(
+            tuple(loop_keys[index:] + loop_keys[:index])
+            for index in range(len(loop_keys))
+        )
+        reverse = list(reversed(loop_keys))
+        reverse_canonical = min(
+            tuple(reverse[index:] + reverse[:index])
+            for index in range(len(reverse))
+        )
+        loop_key = min(canonical, reverse_canonical)
+        existing = unique_loops.get(loop_key)
+        if existing is None or abs(_polygon_signed_area(loop)) > abs(_polygon_signed_area(existing)):
+            unique_loops[loop_key] = loop
+
+    result = list(unique_loops.values())
+    result.sort(key=lambda loop: abs(_polygon_signed_area(loop)), reverse=True)
+    if not result:
+        return []
+
+    return result
+
+
+def _loops_cover_points(loops, points):
+    if not points:
+        return True
+    for point in points:
+        if not any(_point_inside_or_on_polygon(point, loop) for loop in loops):
+            return False
+    return True
+
+
+def _largest_covering_union_loop(loops, coverage_points):
+    loops = [
+        _dedupe_air_duct_points(loop)
+        for loop in loops
+        if len(_dedupe_air_duct_points(loop)) >= 3
+    ]
+    if not loops:
+        return []
+    loops.sort(key=lambda loop: abs(_polygon_signed_area(loop)), reverse=True)
+    primary = [loops[0]]
+    if _loops_cover_points(primary, coverage_points):
+        return primary
+    return loops
+
+
+def _union_polygon_with_rect_boundary(polygon, rect):
+    polygon = _dedupe_air_duct_points(polygon)
+    rect = _dedupe_air_duct_points(rect)
+    if len(polygon) < 3 or len(rect) < 3:
+        return [polygon] if len(polygon) >= 3 else []
+
+    min_x = min(point.x for point in rect)
+    max_x = max(point.x for point in rect)
+    min_y = min(point.y for point in rect)
+    max_y = max(point.y for point in rect)
+    rect_edge_list = _rect_edges(rect)
+    polygon_edge_list = _polygon_edges(polygon)
+    segments = []
+
+    for start, end in polygon_edge_list:
+        split_params = []
+        for rect_start, rect_end in rect_edge_list:
+            split_params.extend(_segment_intersection_params(start, end, rect_start, rect_end))
+        for piece_start, piece_end in _split_segment_points(start, end, split_params):
+            midpoint = (piece_start + piece_end) * 0.5
+            if not _point_in_rect(midpoint, min_x, min_y, max_x, max_y):
+                segments.append((piece_start, piece_end))
+
+    for start, end in rect_edge_list:
+        split_params = []
+        for poly_start, poly_end in polygon_edge_list:
+            split_params.extend(_segment_intersection_params(start, end, poly_start, poly_end))
+        for piece_start, piece_end in _split_segment_points(start, end, split_params):
+            midpoint = (piece_start + piece_end) * 0.5
+            if not _point_in_polygon(midpoint, polygon):
+                segments.append((piece_start, piece_end))
+
+    loops = _boundary_loops_from_segments(segments)
+    if loops:
+        return loops
+    return [polygon]
+
+
+def _union_polygons_boundary(polygons):
+    polygons = [
+        _dedupe_air_duct_points(polygon)
+        for polygon in polygons
+        if len(_dedupe_air_duct_points(polygon)) >= 3
+    ]
+    if not polygons:
+        return []
+    if len(polygons) == 1:
+        return polygons
+
+    polygon_edges = [_polygon_edges(polygon) for polygon in polygons]
+    segments = []
+    for polygon_index, edges in enumerate(polygon_edges):
+        for start, end in edges:
+            split_params = []
+            for other_index, other_edges in enumerate(polygon_edges):
+                if other_index == polygon_index:
+                    continue
+                for other_start, other_end in other_edges:
+                    split_params.extend(_segment_intersection_params(start, end, other_start, other_end))
+            for piece_start, piece_end in _split_segment_points(start, end, split_params):
+                midpoint = (piece_start + piece_end) * 0.5
+                if any(
+                    _point_in_polygon(midpoint, other_polygon)
+                    for other_index, other_polygon in enumerate(polygons)
+                    if other_index != polygon_index
+                ):
+                    continue
+                segments.append((piece_start, piece_end))
+
+    loops = _boundary_loops_from_segments(segments)
+    if loops:
+        return loops
+    return polygons
+
+
+def _bbox_outline_with_inlet(polygon, rect):
+    points = _dedupe_air_duct_points((polygon or []) + (rect or []))
+    if len(points) < 3 or len(rect) < 4:
+        return polygon
+    min_x = min(point.x for point in points)
+    max_x = max(point.x for point in points)
+    min_y = min(point.y for point in points)
+    max_y = max(point.y for point in points)
+    rect_min_y = min(point.y for point in rect)
+    rect_max_y = max(point.y for point in rect)
+    if abs(rect_max_y - max_y) < abs(rect_min_y - min_y):
+        y = rect_min_y
+        return [
+            Vec2(min_x, min_y),
+            Vec2(max_x, min_y),
+            Vec2(max_x, y),
+            Vec2(max_x, max_y),
+            Vec2(min_x, max_y),
+            Vec2(min_x, y),
+        ]
+    y = rect_max_y
+    return [
+        Vec2(min_x, min_y),
+        Vec2(max_x, min_y),
+        Vec2(max_x, y),
+        Vec2(max_x, max_y),
+        Vec2(min_x, max_y),
+        Vec2(min_x, y),
+    ]
+
+
+def _bridge_air_duct_components_with_inlet(component_polygons, inlet_points):
+    components = [
+        _dedupe_air_duct_points(polygon)
+        for polygon in component_polygons
+        if len(_dedupe_air_duct_points(polygon)) >= 3
+    ]
+    inlet = _dedupe_air_duct_points(inlet_points)
+    if len(components) < 2 or len(inlet) < 4:
+        return []
+
+    components = sorted(
+        components,
+        key=lambda polygon: sum(point.x for point in polygon) / len(polygon),
+    )
+    left = components[0]
+    right = components[-1]
+    all_points = [point for polygon in components for point in polygon]
+    all_points.extend(inlet)
+    min_y = min(point.y for point in all_points)
+    max_y = max(point.y for point in all_points)
+    slot_min_y = max(min_y, min(point.y for point in inlet))
+    slot_max_y = min(max_y, max(point.y for point in inlet))
+    if slot_max_y - slot_min_y <= POINT_TOLERANCE:
+        return []
+
+    left_min_x = min(point.x for point in left)
+    left_max_x = max(point.x for point in left)
+    right_min_x = min(point.x for point in right)
+    right_max_x = max(point.x for point in right)
+    if right_min_x <= left_max_x + POINT_TOLERANCE:
+        return []
+
+    loop = [
+        Vec2(left_min_x, min_y),
+        Vec2(left_max_x, min_y),
+        Vec2(left_max_x, slot_min_y),
+        Vec2(right_min_x, slot_min_y),
+        Vec2(right_min_x, min_y),
+        Vec2(right_max_x, min_y),
+        Vec2(right_max_x, max_y),
+        Vec2(right_min_x, max_y),
+        Vec2(right_min_x, slot_max_y),
+        Vec2(left_max_x, slot_max_y),
+        Vec2(left_max_x, max_y),
+        Vec2(left_min_x, max_y),
+    ]
+    return [_dedupe_air_duct_points(loop)]
+
+
+def _horizontal_extents_at_y(polygons, y):
+    intersections = []
+    for polygon in polygons:
+        for start, end in _polygon_edges(polygon):
+            if abs(start.y - end.y) <= POINT_TOLERANCE:
+                if abs(y - start.y) <= POINT_TOLERANCE:
+                    intersections.extend([start.x, end.x])
+                continue
+            low = min(start.y, end.y) - POINT_TOLERANCE
+            high = max(start.y, end.y) + POINT_TOLERANCE
+            if low <= y <= high:
+                intersections.append(_horizontal_intersection(start, end, y).x)
+
+    if len(intersections) < 2:
+        return None
+    intersections = sorted(intersections)
+    return intersections[0], intersections[-1]
+
+
+def _air_duct_inlet_points(records, params, region, polygons=None):
+    if len(records) < 2:
+        return []
+    if not (region.startswith("upper") or region.startswith("lower")):
+        return []
+
+    points = []
+    for record in records:
+        points.append(record["near"])
+        points.append(record["far"])
+    min_x = min(point.x for point in points)
+    max_x = max(point.x for point in points)
+    min_y = min(point.y for point in points)
+    max_y = max(point.y for point in points)
+    if max_x - min_x <= POINT_TOLERANCE:
+        return []
+
+    width = max(
+        params.circle_radius * 2.0,
+        sum(record["width"] for record in records) / len(records),
+    )
+    distance = max(0.0, getattr(params, "air_duct_inlet_distance", 0.0))
+
+    if region.startswith("upper"):
+        near_y = min(min_y + distance, max_y)
+        far_y = min(near_y + width, max_y)
+    else:
+        near_y = max(max_y - distance, min_y)
+        far_y = max(near_y - width, min_y)
+
+    if polygons:
+        near_extents = _horizontal_extents_at_y(polygons, near_y)
+        far_extents = _horizontal_extents_at_y(polygons, far_y)
+        if near_extents and far_extents:
+            near_min_x, near_max_x = near_extents
+            far_min_x, far_max_x = far_extents
+            if (
+                near_max_x - near_min_x > POINT_TOLERANCE
+                and far_max_x - far_min_x > POINT_TOLERANCE
+            ):
+                # Clamp the inlet to the duct boundary. A tiny outward nudge is
+                # applied later only for topology; adding a visible side margin
+                # here creates the small tabs seen beside the outer duct.
+                return [
+                    Vec2(near_min_x, near_y),
+                    Vec2(near_max_x, near_y),
+                    Vec2(far_max_x, far_y),
+                    Vec2(far_min_x, far_y),
+                ]
+
+    side_margin = max(0.0, params.circle_radius + _air_duct_envelope_margin(params.circle_radius))
+    return [
+        Vec2(min_x - side_margin, near_y),
+        Vec2(max_x + side_margin, near_y),
+        Vec2(max_x + side_margin, far_y),
+        Vec2(min_x - side_margin, far_y),
+    ]
+
+
+def _nudge_inlet_points_for_union(points):
+    """Move inlet side edges microscopically through the duct before union.
+
+    The inlet is intentionally clamped to the duct boundary so it does not
+    protrude visually. That can make boolean union see a pure tangency instead
+    of an overlap. A sub-millimeter outward nudge crosses the side duct edges
+    so the boundary merger sees one connected channel; the final outline is
+    still clamped by the merged outer boundary in normal cases.
+    """
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 4:
+        return points
+
+    min_x = min(point.x for point in points)
+    max_x = max(point.x for point in points)
+    width = max_x - min_x
+    if width <= POINT_TOLERANCE:
+        return points
+
+    amount = min(max(POINT_TOLERANCE * 10.0, width * 1e-6), width * 0.001)
+    center_x = sum(point.x for point in points) / len(points)
+    nudged = []
+    for point in points:
+        if point.x < center_x:
+            nudged.append(Vec2(point.x - amount, point.y))
+        elif point.x > center_x:
+            nudged.append(Vec2(point.x + amount, point.y))
+        else:
+            nudged.append(point)
+    return _dedupe_air_duct_points(nudged)
+
+
+def _split_air_duct_components(records, total_length, split_disconnected):
+    if not records:
+        return []
+    if not split_disconnected:
+        return [_ordered_air_duct_records(records, total_length)]
+
+    min_x = min(record["source_point"].x for record in records)
+    max_x = max(record["source_point"].x for record in records)
+    if max_x - min_x > POINT_TOLERANCE * 100.0:
+        center_x = (min_x + max_x) * 0.5
+        left = [
+            record
+            for record in records
+            if record["source_point"].x <= center_x
+        ]
+        right = [
+            record
+            for record in records
+            if record["source_point"].x > center_x
+        ]
+        side_components = [
+            _ordered_air_duct_records(side_records, total_length)
+            for side_records in (left, right)
+            if len(side_records) >= 2
+        ]
+        if len(side_components) >= 2:
+            return side_components
+
+    ordered = sorted(records, key=lambda record: record["source_distance"])
+    if len(ordered) <= 2:
+        return [ordered]
+
+    gaps = [
+        ordered[index + 1]["source_distance"] - ordered[index]["source_distance"]
+        for index in range(len(ordered) - 1)
+    ]
+    positive_gaps = sorted(gap for gap in gaps if gap > POINT_TOLERANCE)
+    if not positive_gaps:
+        return [ordered]
+    median_gap = positive_gaps[len(positive_gaps) // 2]
+    threshold = max(median_gap * 3.0, total_length * 0.015, POINT_TOLERANCE * 100.0)
+
+    components = []
+    current = [ordered[0]]
+    for index, gap in enumerate(gaps):
+        if gap > threshold:
+            if len(current) >= 2:
+                components.append(current)
+            current = [ordered[index + 1]]
+        else:
+            current.append(ordered[index + 1])
+    if len(current) >= 2:
+        components.append(current)
+    return components or [ordered]
+
+
+def _air_duct_curve(points, endpoint_margin=0.0):
+    points = _remove_hairpin_points(points)
+    points = _extend_open_curve_endpoints(points, endpoint_margin)
+    # The ray records are already dense on real surfboard outlines. Keeping the
+    # envelope as an ordered polyline is both faster and more predictable than
+    # spline interpolation, which can overshoot at rounded feet or tight apexes.
+    return _dedupe_air_duct_points(points)
+
+
+def _air_duct_envelope_margin(radius):
+    if radius <= 0:
+        return 0.0
+    return max(radius * 0.12, 0.25, POINT_TOLERANCE * 20.0)
+
+
+def _circle_envelope_points(center, radius, samples=24):
+    if radius <= 0:
+        return [center]
+    return [
+        center + Vec2(
+            math.cos(2.0 * math.pi * index / samples) * radius,
+            math.sin(2.0 * math.pi * index / samples) * radius,
+        )
+        for index in range(samples)
+    ]
+
+
+def _distance_to_segment_square(point, start, end):
+    segment = end - start
+    length_sq = segment.dot(segment)
+    if length_sq <= POINT_TOLERANCE:
+        return _distance_square(point, start), 0.0
+    t = max(0.0, min(1.0, (point - start).dot(segment) / length_sq))
+    closest = start + segment * t
+    return _distance_square(point, closest), t
+
+
+def _nearest_loop_edge(point, loops):
+    best = None
+    for loop_index, loop in enumerate(loops):
+        if len(loop) < 2:
+            continue
+        for edge_index in range(len(loop)):
+            start = loop[edge_index]
+            end = loop[(edge_index + 1) % len(loop)]
+            distance_sq, t = _distance_to_segment_square(point, start, end)
+            key = (distance_sq, loop_index, edge_index)
+            if best is None or key < best[0]:
+                best = (key, loop_index, edge_index, t)
+    return best
+
+
+def _expand_air_duct_loops_to_cover_records(loops, records, radius):
+    expanded = [
+        _dedupe_air_duct_points(loop)
+        for loop in loops
+        if len(_dedupe_air_duct_points(loop)) >= 3
+    ]
+    # Dense surfboard rows already define the intended duct envelope. The
+    # point-by-point cover repair is useful for small synthetic tests, but on
+    # real boards it is expensive and can add noisy vertices around tangent
+    # regions. Keep large regions fast and stable.
+    if len(records) > 32 or not expanded or radius <= 0:
+        return expanded
+
+    envelope_radius = radius + _air_duct_envelope_margin(radius)
+    for record in records:
+        centers = record.get("circle_centers") or [
+            record.get("near_center"),
+            record.get("far_center"),
+        ]
+        for center in centers:
+            if center is None:
+                continue
+            for point in _circle_envelope_points(center, envelope_radius, samples=8):
+                if _loops_cover_points(expanded, [point]):
+                    continue
+                nearest = _nearest_loop_edge(point, expanded)
+                if not nearest:
+                    continue
+                _, loop_index, edge_index, _ = nearest
+                loop = list(expanded[loop_index])
+                loop.insert(edge_index + 1, point)
+                expanded[loop_index] = _dedupe_air_duct_points(loop)
+    return [
+        loop
+        for loop in expanded
+        if len(loop) >= 3
+    ]
+
+
+def _curve_tangent(points, index):
+    if len(points) < 2:
+        return Vec2(1, 0)
+    if index <= 0:
+        tangent = points[1] - points[0]
+    elif index >= len(points) - 1:
+        tangent = points[-1] - points[-2]
+    else:
+        tangent = points[index + 1] - points[index - 1]
+    if tangent.magnitude <= POINT_TOLERANCE:
+        return Vec2(1, 0)
+    return tangent.normalize()
+
+
+def _offset_air_duct_center_curve(records, center_key, opposite_key, endpoint_margin=0.0):
+    if not records or any(center_key not in record or opposite_key not in record for record in records):
+        return []
+
+    centers = [record[center_key] for record in records]
+    offset_points = []
+    for index, record in enumerate(records):
+        center = record[center_key]
+        opposite = record[opposite_key]
+        tangent = _curve_tangent(centers, index)
+        normal = Vec2(-tangent.y, tangent.x)
+        away = center - opposite
+        if normal.dot(away) < 0:
+            normal = -normal
+        radius = max(0.0, record.get("radius", 0.0))
+        offset_points.append(center + normal * (radius + _air_duct_envelope_margin(radius)))
+
+    return _air_duct_curve(offset_points, endpoint_margin=endpoint_margin)
+
+
+def _air_duct_component_curves(records, endpoint_margin=0.0):
+    if len(records) < 2:
+        return [], []
+    outer_curve = _offset_air_duct_center_curve(
+        records,
+        "near_center",
+        "far_center",
+        endpoint_margin=endpoint_margin,
+    )
+    inner_curve = _offset_air_duct_center_curve(
+        records,
+        "far_center",
+        "near_center",
+        endpoint_margin=endpoint_margin,
+    )
+    return outer_curve, inner_curve
+
+
+def _air_duct_component_polygon(records, endpoint_margin=0.0):
+    if len(records) < 2:
+        return []
+    outer_curve, inner_curve = _air_duct_component_curves(
+        records,
+        endpoint_margin=endpoint_margin,
+    )
+    if not outer_curve or not inner_curve:
+        outer_curve = _air_duct_curve(
+            [record["near"] for record in records],
+            endpoint_margin=endpoint_margin,
+        )
+        inner_curve = _air_duct_curve(
+            [record["far"] for record in reversed(records)],
+            endpoint_margin=endpoint_margin,
+        )
+    else:
+        inner_curve = list(reversed(inner_curve))
+    return _dedupe_air_duct_points(outer_curve + inner_curve)
+
+
+def _single_component_air_duct_slot_loops(records, params, region, endpoint_margin=0.0):
+    outer_curve, inner_curve = _air_duct_component_curves(
+        records,
+        endpoint_margin=endpoint_margin,
+    )
+    if len(outer_curve) < 3 or len(inner_curve) < 3:
+        return []
+
+    polygon = _dedupe_air_duct_points(outer_curve + list(reversed(inner_curve)))
+    if len(polygon) < 3:
+        return []
+
+    inlet = _air_duct_inlet_points(records, params, region, [polygon])
+    if len(inlet) < 4:
+        return []
+
+    inlet_ys = sorted({round(point.y, 9) for point in inlet})
+    if len(inlet_ys) < 2:
+        return []
+
+    if region.startswith("upper"):
+        outer_y = inlet_ys[0]
+        inner_y = inlet_ys[-1]
+        keep_above = True
+    elif region.startswith("lower"):
+        outer_y = inlet_ys[-1]
+        inner_y = inlet_ys[0]
+        keep_above = False
+    else:
+        return []
+
+    outer_loop = _clip_polyline_to_horizontal(outer_curve, outer_y, keep_above)
+    inner_loop = _clip_polyline_to_horizontal(inner_curve, inner_y, keep_above)
+    loops = [
+        _dedupe_air_duct_points(loop)
+        for loop in (outer_loop, inner_loop)
+        if len(_dedupe_air_duct_points(loop)) >= 3
+    ]
+    if len(loops) != 2:
+        return []
+
+    # The two closed curves are the physical slot edges. They must not be
+    # collapsed into a single filled face; otherwise the duct becomes a solid
+    # "lake" and loses the inner boundary that defines the groove width.
+    return loops
+
+
+def _air_duct_region_contours(records, total_length, params, region):
+    if len(records) < 2:
+        return []
+    split_disconnected = region.endswith("_inner")
+    components = _split_air_duct_components(records, total_length, split_disconnected)
+    ordered = [record for component in components for record in component]
+    endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
+    endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
+    component_polygons = [
+        polygon
+        for polygon in (
+            _air_duct_component_polygon(component, endpoint_margin=endpoint_margin)
+            for component in components
+        )
+        if len(polygon) >= 3
+    ]
+    if not component_polygons:
+        return []
+    inlet_points = _air_duct_inlet_points(ordered, params, region, component_polygons)
+    if inlet_points:
+        if len(component_polygons) == 1 and len(components) == 1:
+            slot_loops = _single_component_air_duct_slot_loops(
+                components[0],
+                params,
+                region,
+                endpoint_margin=endpoint_margin,
+            )
+            if slot_loops:
+                slot_loops = _expand_air_duct_loops_to_cover_records(
+                    slot_loops,
+                    records,
+                    endpoint_radius,
+                )
+                return [
+                    {"role": f"outline_{index}", "points": loop}
+                    for index, loop in enumerate(slot_loops)
+                    if len(loop) >= 3
+                ]
+
+        if len(records) <= 20:
+            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
+            if len(component_polygons) == 1:
+                loops = _union_polygon_with_rect_boundary(
+                    component_polygons[0],
+                    union_inlet_points,
+                )
+            else:
+                loops = _union_polygons_boundary(component_polygons + [union_inlet_points])
+                coverage_points = [
+                    point
+                    for polygon in component_polygons
+                    for point in polygon
+                ] + inlet_points
+                if len(loops) > 1 or not _loops_cover_points(loops, coverage_points):
+                    bridged = _bridge_air_duct_components_with_inlet(
+                        component_polygons,
+                        inlet_points,
+                    )
+                    if bridged:
+                        loops = bridged
+            loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
+            return [
+                {"role": f"outline_{index}", "points": loop}
+                for index, loop in enumerate(loops)
+                if len(loop) >= 3
+            ]
+
+        # Dense real board path: return one closed outline per region. The
+        # previous fallback drew the duct envelope and inlet as separate
+        # contours, which looked like internal dividing lines.
+        if len(component_polygons) > 1:
+            bridged = _bridge_air_duct_components_with_inlet(
+                component_polygons,
+                inlet_points,
+            )
+            loops = bridged if bridged else component_polygons
+        else:
+            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
+            loops = _union_polygon_with_rect_boundary(
+                component_polygons[0],
+                union_inlet_points,
+            )
+        loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
+        return [
+            {"role": f"outline_{index}", "points": loop}
+            for index, loop in enumerate(loops)
+            if len(loop) >= 3
+        ]
+
+    component_polygons = _expand_air_duct_loops_to_cover_records(
+        component_polygons,
+        records,
+        endpoint_radius,
+    )
+    return [
+        {"role": f"outline_{index}", "points": polygon}
+        for index, polygon in enumerate(component_polygons)
+        if len(polygon) >= 3
+    ]
+
+
+def _air_duct_contours(doc, chain, params, placements, kept_items):
+    if not getattr(params, "air_duct_enabled", True):
+        return []
+    if not placements or not kept_items:
+        return []
+
+    axis = _chain_axis(doc, chain)
+    total_length = geom.chain_length(doc, chain)
+    kept_by_placement = _items_by_placement(kept_items)
+    grouped = {}
+    for placement_index, placement in enumerate(placements):
+        placement_items = kept_by_placement.get(placement_index, [])
+        if not placement_items:
+            continue
+        # The duct is a continuous manifold around the intended hole row. If a
+        # few holes are hidden because of overlap pruning, using only the kept
+        # holes makes the envelope dent inward. Use the full planned row for
+        # the duct shape while still skipping rays that have no kept holes.
+        record = _air_duct_record(placement, params.circle_radius, None)
+        if not record:
+            continue
+        region = _air_duct_region_key(placement, axis, params)
+        grouped.setdefault(region, []).append(record)
+
+    offset = _air_duct_template_offset(doc, chain)
+    contours = []
+    region_order = [
+        "upper_outer",
+        "upper_inner",
+        "upper",
+        "all",
+        "lower_inner",
+        "lower_outer",
+        "lower",
+    ]
+    ordered_regions = sorted(
+        grouped,
+        key=lambda key: (
+            region_order.index(key) if key in region_order else len(region_order),
+            key,
+        ),
+    )
+    for region in ordered_regions:
+        for contour in _air_duct_region_contours(grouped[region], total_length, params, region):
+            shifted = [point + offset for point in contour["points"]]
+            contours.append({
+                "region": region,
+                "role": contour["role"],
+                "points": shifted,
+            })
+    return contours
+
+
+def _contour_svg_path(points, bounds, scale):
+    if not points:
+        return ""
+    parts = []
+    for index, point in enumerate(points):
+        x, y = _to_svg(point.x, point.y, bounds, scale)
+        command = "M" if index == 0 else "L"
+        parts.append(f"{command} {x:.1f} {y:.1f}")
+    parts.append("Z")
+    return " ".join(parts)
+
+
+def _add_air_duct_entities(msp, doc, contours):
+    if not contours:
+        return []
+    if AIR_DUCT_LAYER not in doc.layers:
+        doc.layers.add(AIR_DUCT_LAYER)
+    handles = []
+    for contour in contours:
+        points = contour.get("points") or []
+        if len(points) < 3:
+            continue
+        polyline = msp.add_lwpolyline(
+            [(point.x, point.y) for point in points],
+            close=True,
+            dxfattribs={"layer": AIR_DUCT_LAYER},
+        )
+        handles.append(polyline.dxf.handle)
+    return handles
+
+
 def _mirror_groups(items, axis_center_x, radius):
     unused = {item["id"] for item in items}
     by_id = {item["id"]: item for item in items}
@@ -872,12 +2161,23 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     kept_items, removed_items = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
     axis = _chain_axis(doc, chain)
+    air_duct_contours = _air_duct_contours(doc, chain, params, placements, kept_items)
+    air_duct_template_offset = _air_duct_template_offset(doc, chain)
 
     circles = []
     removed_circles = []
     rays = []
     basis = []
     capsules = []
+    air_ducts = []
+    for contour in air_duct_contours:
+        d = _contour_svg_path(contour["points"], bounds, scale)
+        if d:
+            air_ducts.append({
+                "d": d,
+                "region": contour["region"],
+                "role": contour.get("role", "outline"),
+            })
     for placement_index, p in enumerate(placements):
         x, y = _to_svg(p["point"].x, p["point"].y, bounds, scale)
         basis.append({
@@ -932,6 +2232,11 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "removed_circles": removed_circles,
         "rays": rays,
         "capsules": capsules,
+        "air_ducts": air_ducts,
+        "air_duct_template_offset": {
+            "x": air_duct_template_offset.x * scale,
+            "y": -air_duct_template_offset.y * scale,
+        },
         "basis": basis,
         "scale": scale,
         "selected_chain_path": chain_path,
@@ -942,6 +2247,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
         "removed_count": len(removed_circles),
+        "air_duct_count": len(air_ducts),
     }
 
 
@@ -992,6 +2298,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
     axis = _chain_axis(doc, chain)
+    air_duct_contours = _air_duct_contours(doc, chain, params, placements, kept_items)
 
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
@@ -1017,5 +2324,6 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
         )
         if capsule:
             _add_capsule_entities(msp, capsule)
+    _add_air_duct_entities(msp, doc, air_duct_contours)
 
     return circle_handles, []

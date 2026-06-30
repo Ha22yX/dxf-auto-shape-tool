@@ -41,13 +41,7 @@ def get_chain_info(doc, chain: List[str]) -> dict:
     if len(chain) == 1:
         entity = doc.entitydb.get(chain[0])
         if entity:
-            dtype = entity.dxftype()
-            if dtype == "CIRCLE":
-                is_closed = True
-            elif dtype == "LWPOLYLINE":
-                is_closed = entity.closed
-            elif dtype == "POLYLINE":
-                is_closed = entity.is_closed
+            is_closed = _entity_is_closed(entity)
     elif len(chain) >= 2:
         # Build adjacency restricted to chain
         graph, _ = _build_adjacency(doc)
@@ -229,3 +223,21 @@ def _point_key(p: Vec2) -> str:
 
 def _points_equal(a: Vec2, b: Vec2) -> bool:
     return (a - b).magnitude < POINT_TOLERANCE
+
+
+def _entity_is_closed(entity) -> bool:
+    dtype = entity.dxftype()
+    if dtype == "CIRCLE":
+        return True
+    if dtype == "LWPOLYLINE":
+        return bool(entity.closed)
+    if dtype == "POLYLINE":
+        return bool(entity.is_closed)
+    if bool(getattr(entity, "closed", False)):
+        return True
+
+    endpoints = geom.entity_endpoints(entity)
+    if not endpoints:
+        return False
+    start, end = endpoints
+    return _points_equal(start, end) and geom.entity_length(entity) > POINT_TOLERANCE

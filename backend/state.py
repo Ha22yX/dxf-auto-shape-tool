@@ -17,6 +17,8 @@ class CircleParams:
     capsule_clearance_distance: float = DEFAULT_PARAMS["capsule_clearance_distance"]
     capsule_axis_gap_above_distance: float = DEFAULT_PARAMS["capsule_axis_gap_above_distance"]
     capsule_axis_gap_below_distance: float = DEFAULT_PARAMS["capsule_axis_gap_below_distance"]
+    air_duct_enabled: bool = DEFAULT_PARAMS["air_duct_enabled"]
+    air_duct_inlet_distance: float = DEFAULT_PARAMS["air_duct_inlet_distance"]
     top_gap_distance: float = DEFAULT_PARAMS["top_gap_distance"]
     ray_count: int = DEFAULT_PARAMS["ray_count"]
     ray_direction: str = DEFAULT_PARAMS["ray_direction"]
@@ -49,6 +51,14 @@ class CircleParams:
                 "capsule_axis_gap_below_distance",
                 legacy_axis_gap,
             ))),
+            air_duct_enabled=bool(data.get(
+                "air_duct_enabled",
+                DEFAULT_PARAMS["air_duct_enabled"],
+            )),
+            air_duct_inlet_distance=max(0.0, float(data.get(
+                "air_duct_inlet_distance",
+                DEFAULT_PARAMS["air_duct_inlet_distance"],
+            ))),
             top_gap_distance=float(data.get("top_gap_distance", DEFAULT_PARAMS["top_gap_distance"])),
             ray_count=int(data.get("ray_count", DEFAULT_PARAMS["ray_count"])),
             ray_direction=str(data.get("ray_direction", DEFAULT_PARAMS["ray_direction"])),
@@ -65,6 +75,8 @@ class CircleParams:
             "capsule_clearance_distance": self.capsule_clearance_distance,
             "capsule_axis_gap_above_distance": self.capsule_axis_gap_above_distance,
             "capsule_axis_gap_below_distance": self.capsule_axis_gap_below_distance,
+            "air_duct_enabled": self.air_duct_enabled,
+            "air_duct_inlet_distance": self.air_duct_inlet_distance,
             "top_gap_distance": self.top_gap_distance,
             "ray_count": self.ray_count,
             "ray_direction": self.ray_direction,

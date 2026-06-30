@@ -73,6 +73,14 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
+            air_duct_inlet_distance: {
+                min: 0,
+                max: 99999,
+                sliderMin: 0,
+                sliderMax: 200,
+                step: 0.5,
+                decimals: 1,
+            },
             top_gap_distance: {
                 min: 0,
                 max: 99999,
@@ -103,6 +111,8 @@ class ParameterPanel {
 
         this.rayDirection = document.getElementById("param-ray-direction");
         this.dedupeClosedRays = document.getElementById("param-dedupe-closed-rays");
+        this.airDuctEnabled = document.getElementById("param-air-duct-enabled");
+        this.airDuctCompareOverlay = document.getElementById("toggle-air-duct-compare-overlay");
         this.togglePreview = document.getElementById("toggle-preview");
         this.capsuleStartMidHint = document.getElementById("capsule-start-mid-hint");
         this.capsuleStartMaxHint = document.getElementById("capsule-start-max-hint");
@@ -110,6 +120,7 @@ class ParameterPanel {
         this.onParamsChange = null;
         this.onParamsPreview = null;
         this.onToggleChange = null;
+        this.onAirDuctCompareChange = null;
         this.onGuideChange = null;
         this._activeGuideKey = null;
 
@@ -292,6 +303,13 @@ class ParameterPanel {
                 "capsule_axis_gap_below_distance",
                 parse("capsule_axis_gap_below_distance", 0),
             ),
+            air_duct_enabled: this.airDuctEnabled
+                ? this.airDuctEnabled.checked
+                : true,
+            air_duct_inlet_distance: this._normalizeInputValue(
+                "air_duct_inlet_distance",
+                parse("air_duct_inlet_distance", 20),
+            ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",
                 parse("top_gap_distance", 40),
@@ -323,6 +341,9 @@ class ParameterPanel {
         if (params.dedupe_closed_rays !== undefined && this.dedupeClosedRays) {
             this.dedupeClosedRays.checked = Boolean(params.dedupe_closed_rays);
         }
+        if (params.air_duct_enabled !== undefined && this.airDuctEnabled) {
+            this.airDuctEnabled.checked = Boolean(params.air_duct_enabled);
+        }
     }
 
     getShowGenerated() {
@@ -331,6 +352,16 @@ class ParameterPanel {
 
     setShowGenerated(value) {
         if (this.togglePreview) this.togglePreview.checked = value;
+    }
+
+    getAirDuctCompareOverlay() {
+        return this.airDuctCompareOverlay ? this.airDuctCompareOverlay.checked : false;
+    }
+
+    setAirDuctCompareOverlay(value) {
+        if (this.airDuctCompareOverlay) {
+            this.airDuctCompareOverlay.checked = Boolean(value);
+        }
     }
 
     _bindEvents() {
@@ -382,9 +413,21 @@ class ParameterPanel {
             this.dedupeClosedRays.addEventListener("change", triggerChange);
         }
 
+        if (this.airDuctEnabled) {
+            this.airDuctEnabled.addEventListener("change", triggerChange);
+        }
+
         if (this.togglePreview) {
             this.togglePreview.addEventListener("change", () => {
                 if (this.onToggleChange) this.onToggleChange(this.getShowGenerated());
+            });
+        }
+
+        if (this.airDuctCompareOverlay) {
+            this.airDuctCompareOverlay.addEventListener("change", () => {
+                if (this.onAirDuctCompareChange) {
+                    this.onAirDuctCompareChange(this.getAirDuctCompareOverlay());
+                }
             });
         }
     }

@@ -97,6 +97,10 @@ const App = {
             wsClient.sendToggle(showGenerated);
         };
 
+        parameterPanel.onAirDuctCompareChange = (enabled) => {
+            svgViewer.setAirDuctCompareMode(enabled);
+        };
+
         parameterPanel.onGuideChange = (key, visible, params) => {
             if (
                 key === "capsule_axis_gap_above_distance"

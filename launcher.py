@@ -41,6 +41,33 @@ def _app_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _app_icon_path() -> Path:
+    return _app_dir() / "frontend" / "assets" / "app-icon.ico"
+
+
+def _set_window_icon(window: tk.Tk | tk.Toplevel) -> None:
+    icon_path = _app_icon_path()
+    if not icon_path.exists():
+        return
+    try:
+        window.iconbitmap(default=str(icon_path))
+    except tk.TclError:
+        pass
+
+
+def _set_windows_app_id() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Ha22yX.DxfAutoShapeTool"
+        )
+    except Exception:
+        pass
+
+
 def _service_child(host: str, port: int) -> None:
     os.chdir(_app_dir())
     sys.path.insert(0, str(_app_dir()))
@@ -233,6 +260,7 @@ class LauncherApp:
         self.lan_ip = _lan_ip()
 
         self.root.title(APP_TITLE)
+        _set_window_icon(self.root)
         self.root.geometry("560x340")
         self.root.minsize(520, 320)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -421,6 +449,7 @@ class LauncherApp:
 
         self.log_window = tk.Toplevel(self.root)
         self.log_window.title("网站日志")
+        _set_window_icon(self.log_window)
         self.log_window.geometry("860x520")
         self.log_window.minsize(620, 360)
         self.log_window.columnconfigure(0, weight=1)
@@ -508,6 +537,7 @@ def main() -> None:
         _service_child(args.host, args.port)
         return
 
+    _set_windows_app_id()
     root = tk.Tk()
     LauncherApp(root, port=args.port)
     root.mainloop()

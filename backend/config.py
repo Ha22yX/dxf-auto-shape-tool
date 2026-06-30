@@ -23,6 +23,8 @@ DEFAULT_PARAMS = {
     "capsule_clearance_distance": 2.0,
     "capsule_axis_gap_above_distance": 0.0,
     "capsule_axis_gap_below_distance": 0.0,
+    "air_duct_enabled": True,
+    "air_duct_inlet_distance": 20.0,
     "top_gap_distance": 40.0,
     "ray_count": 200,
     "ray_direction": "inward",  # "inward" or "outward"
@@ -37,4 +39,5 @@ MIN_ENTITY_LENGTH = 1e-6
 # Generated circles layer
 GENERATED_LAYER = "GENERATED_CIRCLES"
 RAY_LAYER = "GENERATED_RAYS"
+AIR_DUCT_LAYER = "GENERATED_AIR_DUCTS"
 SELECTED_HIGHLIGHT_COLOR = "#00BFFF"

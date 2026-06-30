@@ -81,6 +81,54 @@
     cursor: pointer;
 }
 
+#dxf-base-layer.air-duct-compare-original {
+    opacity: 0.34;
+    filter: grayscale(1);
+}
+
+#dxf-base-layer.air-duct-compare-original path,
+#dxf-base-layer.air-duct-compare-original line,
+#dxf-base-layer.air-duct-compare-original polyline,
+#dxf-base-layer.air-duct-compare-original polygon,
+#dxf-base-layer.air-duct-compare-original circle,
+#dxf-base-layer.air-duct-compare-original ellipse,
+#dxf-base-layer.air-duct-compare-original rect,
+#dxf-base-layer.air-duct-compare-original text {
+    stroke: #9a9a9a !important;
+    stroke-opacity: 0.42 !important;
+    fill-opacity: 0.04 !important;
+    color: #9a9a9a !important;
+}
+
+#preview-overlay.air-duct-compare-mode #selected-chain-path,
+#generated-layer.air-duct-compare-original > path,
+#generated-layer.air-duct-compare-original > line,
+#generated-layer.air-duct-compare-original > circle,
+#generated-layer.air-duct-compare-original > ellipse,
+#generated-layer.air-duct-compare-original > polyline,
+#generated-layer.air-duct-compare-original > polygon {
+    stroke: #9a9a9a !important;
+    stroke-opacity: 0.30 !important;
+    fill-opacity: 0.04 !important;
+}
+
+#generated-layer.air-duct-compare-original > line {
+    stroke-opacity: 0.18 !important;
+}
+
+#preview-overlay.air-duct-compare-mode #default-apex-marker {
+    opacity: 0.32;
+}
+
+#generated-layer.air-duct-compare-original .air-duct-layer,
+#generated-layer.air-duct-compare-original .air-duct-layer path {
+    opacity: 1 !important;
+    filter: none !important;
+    stroke: #7DD3FC !important;
+    stroke-opacity: 0.98 !important;
+    fill: none !important;
+}
+
 #dxf-content [data-handle]:hover {
     stroke-opacity: 0.8;
     filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
