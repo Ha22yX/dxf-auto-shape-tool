@@ -1603,6 +1603,39 @@ def test_air_duct_curve_removes_local_hairpin_at_rounded_foot():
         assert incoming.normalize().dot(outgoing.normalize()) >= -0.82
 
 
+def test_air_duct_offset_smoothing_removes_local_dent_without_losing_cover():
+    normals = [Vec2(0, 1)] * 5
+    points = [
+        Vec2(0, 0),
+        Vec2(10, 0),
+        Vec2(20, -12),
+        Vec2(30, 0),
+        Vec2(40, 0),
+    ]
+    radius = 2.0
+    required = radius + circle_generator._air_duct_envelope_margin(radius)
+    records = [
+        {
+            "near_center": point - normal * required,
+            "radius": radius,
+        }
+        for point, normal in zip(points, normals)
+    ]
+
+    smoothed = circle_generator._smooth_air_duct_offset_points(
+        records,
+        "near_center",
+        points,
+        normals,
+    )
+
+    assert smoothed[2].y > points[2].y + 1.0
+    assert all(
+        (point - record["near_center"]).dot(normal) + 1e-9 >= required
+        for point, record, normal in zip(smoothed, records, normals)
+    )
+
+
 def test_air_duct_component_extends_endpoints_to_cover_end_hole_radius():
     records = [
         {

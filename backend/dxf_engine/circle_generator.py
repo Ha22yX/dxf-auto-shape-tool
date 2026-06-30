@@ -1013,6 +1013,39 @@ def _polygon_signed_area(points):
     return area * 0.5
 
 
+def _orient_air_duct_loops(loops):
+    cleaned = [
+        _dedupe_air_duct_points(loop)
+        for loop in loops
+        if len(_dedupe_air_duct_points(loop)) >= 3
+    ]
+    if not cleaned:
+        return []
+
+    result = []
+    for index, loop in enumerate(cleaned):
+        depth = 0
+        test_point = loop[0]
+        area = abs(_polygon_signed_area(loop))
+        for other_index, other in enumerate(cleaned):
+            if other_index == index:
+                continue
+            other_area = abs(_polygon_signed_area(other))
+            if other_area <= area + POINT_TOLERANCE:
+                continue
+            if _point_in_polygon(test_point, other):
+                depth += 1
+
+        signed_area = _polygon_signed_area(loop)
+        should_be_positive = depth % 2 == 0
+        if should_be_positive and signed_area < 0:
+            loop = list(reversed(loop))
+        elif not should_be_positive and signed_area > 0:
+            loop = list(reversed(loop))
+        result.append(loop)
+    return result
+
+
 def _boundary_loops_from_segments(segments):
     key_scale = max(POINT_TOLERANCE * 20.0, 1e-6)
 
@@ -1483,6 +1516,54 @@ def _air_duct_envelope_margin(radius):
     return max(radius * 0.12, 0.25, POINT_TOLERANCE * 20.0)
 
 
+def _smooth_air_duct_offset_points(records, center_key, points, normals):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 5 or len(points) != len(records) or len(points) != len(normals):
+        return points
+
+    required_offsets = [
+        max(0.0, record.get("radius", 0.0))
+        + _air_duct_envelope_margin(max(0.0, record.get("radius", 0.0)))
+        for record in records
+    ]
+    smoothed = list(points)
+    for _ in range(2):
+        next_points = [smoothed[0]]
+        for index in range(1, len(smoothed) - 1):
+            previous = smoothed[index - 1]
+            current = smoothed[index]
+            following = smoothed[index + 1]
+            incoming = current - previous
+            outgoing = following - current
+            if incoming.magnitude <= POINT_TOLERANCE or outgoing.magnitude <= POINT_TOLERANCE:
+                next_points.append(current)
+                continue
+
+            dot = max(-1.0, min(1.0, incoming.normalize().dot(outgoing.normalize())))
+            turn = 1.0 - dot
+            if turn <= 0.04:
+                next_points.append(current)
+                continue
+
+            weight = min(0.28, max(0.08, turn * 0.16))
+            candidate = current * (1.0 - weight * 2.0) + (previous + following) * weight
+
+            normal = normals[index]
+            center = records[index].get(center_key)
+            if center is not None and normal.magnitude > POINT_TOLERANCE:
+                normal = normal.normalize()
+                required = required_offsets[index]
+                offset = (candidate - center).dot(normal)
+                if offset < required:
+                    candidate = candidate + normal * (required - offset)
+
+            next_points.append(candidate)
+        next_points.append(smoothed[-1])
+        smoothed = _dedupe_air_duct_points(next_points)
+
+    return smoothed
+
+
 def _circle_envelope_points(center, radius, samples=24):
     if radius <= 0:
         return [center]
@@ -1579,6 +1660,7 @@ def _offset_air_duct_center_curve(records, center_key, opposite_key, endpoint_ma
 
     centers = [record[center_key] for record in records]
     offset_points = []
+    normals = []
     for index, record in enumerate(records):
         center = record[center_key]
         opposite = record[opposite_key]
@@ -1588,8 +1670,15 @@ def _offset_air_duct_center_curve(records, center_key, opposite_key, endpoint_ma
         if normal.dot(away) < 0:
             normal = -normal
         radius = max(0.0, record.get("radius", 0.0))
+        normals.append(normal)
         offset_points.append(center + normal * (radius + _air_duct_envelope_margin(radius)))
 
+    offset_points = _smooth_air_duct_offset_points(
+        records,
+        center_key,
+        offset_points,
+        normals,
+    )
     return _air_duct_curve(offset_points, endpoint_margin=endpoint_margin)
 
 
@@ -1726,6 +1815,7 @@ def _air_duct_region_contours(records, total_length, params, region):
                 records,
                 endpoint_radius,
             )
+            slot_loops = _orient_air_duct_loops(slot_loops)
             return [
                 {"role": f"outline_{index}", "points": loop}
                 for index, loop in enumerate(slot_loops)
@@ -1752,6 +1842,7 @@ def _air_duct_region_contours(records, total_length, params, region):
                 if not _loops_cover_points(loops, coverage_points):
                     loops = component_polygons + [inlet_points]
             loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
+            loops = _orient_air_duct_loops(loops)
             return [
                 {"role": f"outline_{index}", "points": loop}
                 for index, loop in enumerate(loops)
@@ -1773,6 +1864,7 @@ def _air_duct_region_contours(records, total_length, params, region):
                 union_inlet_points,
             )
         loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
+        loops = _orient_air_duct_loops(loops)
         return [
             {"role": f"outline_{index}", "points": loop}
             for index, loop in enumerate(loops)
@@ -1784,6 +1876,7 @@ def _air_duct_region_contours(records, total_length, params, region):
         records,
         endpoint_radius,
     )
+    component_polygons = _orient_air_duct_loops(component_polygons)
     return [
         {"role": f"outline_{index}", "points": polygon}
         for index, polygon in enumerate(component_polygons)
