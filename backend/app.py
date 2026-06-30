@@ -108,6 +108,7 @@ async def upload_dxf(file: UploadFile = File(...)):
     return {
         "session_id": session_id,
         "base_svg": base.svg_string,
+        "hover_paths": _hover_path_payload(state),
         "bounds": base.bounds,
         "scale": base.scale,
         "entity_count": len(list(working_doc.modelspace())),
@@ -170,6 +171,19 @@ def regenerate(state: SessionState):
         scale=state.svg_scale,
         manual_apex_distance=state.manual_apex_distance,
     )
+
+
+def _hover_path_payload(state: SessionState) -> list[dict]:
+    """Return lightweight front-end hit paths for selectable base entities."""
+    paths = []
+    for entity in state.working_doc.modelspace():
+        if entity.dxftype() not in entity_mapper.EDGE_TYPES:
+            continue
+        handle = entity.dxf.handle
+        path_d = entity_mapper.entity_to_svg_path(state, handle)
+        if path_d:
+            paths.append({"handle": handle, "path_d": path_d})
+    return paths
 
 
 @app.post("/api/session/{session_id}/select")

@@ -19,6 +19,7 @@ class SvgViewer {
         this.hoverHitLayer = null;
         this.hoverVisualLayer = null;
         this.hoverOwners = new Map();
+        this.hoverPathMap = new Map();
         this.lastGeometry = null;
         this.lastShowGenerated = true;
         this.currentPreviewParams = null;
@@ -55,7 +56,7 @@ class SvgViewer {
         this._bindEvents();
     }
 
-    setBaseSvg(svgString) {
+    setBaseSvg(svgString, hoverPaths = []) {
         this.container.innerHTML = svgString;
         this.svg = this.container.querySelector("svg");
         if (!this.svg) return;
@@ -92,8 +93,8 @@ class SvgViewer {
         overlay.appendChild(generatedLayer);
         overlay.appendChild(hoverVisualLayer);
 
-        const hitLayer = this._buildLocalHoverHitLayer(viewport);
         viewport.appendChild(overlay);
+        const hitLayer = this._buildLocalHoverHitLayer(viewport, hoverPaths);
 
         this.viewport = viewport;
         this.overlay = overlay;
@@ -806,10 +807,10 @@ class SvgViewer {
     }
 
     clearHover() {
-        if (this.localHoverElement) {
+        if (this.localHoverElement && this.localHoverElement.classList) {
             this.localHoverElement.classList.remove("local-hover-highlight");
-            this.localHoverElement = null;
         }
+        this.localHoverElement = null;
         this._renderLocalHover(null);
         if (!this.hoverPath) return;
         this.lastHoverHandle = null;
@@ -820,16 +821,26 @@ class SvgViewer {
 
     setLocalHoverElement(element) {
         if (element === this.localHoverElement) return;
-        if (this.localHoverElement) {
+        if (this.localHoverElement && this.localHoverElement.classList) {
             this.localHoverElement.classList.remove("local-hover-highlight");
         }
         this.localHoverElement = element || null;
         if (this.localHoverElement) {
-            this.localHoverElement.classList.add("local-hover-highlight");
-            this._renderLocalHover(this.localHoverElement);
-            this.container.classList.add("has-selectable-hover");
+            if (this.localHoverElement.pathD) {
+                this._renderLocalHover(null);
+                this.setHover(this.localHoverElement.handle, this.localHoverElement.pathD);
+            } else {
+                this.localHoverElement.classList.add("local-hover-highlight");
+                this._renderLocalHover(this.localHoverElement);
+                this.container.classList.add("has-selectable-hover");
+            }
         } else {
             this._renderLocalHover(null);
+            if (this.hoverPath) {
+                this.lastHoverHandle = null;
+                this.hoverPath.removeAttribute("d");
+                this.hoverPath.style.display = "none";
+            }
             this.container.classList.remove("has-selectable-hover");
         }
     }
@@ -873,25 +884,46 @@ class SvgViewer {
         });
     }
 
-    _buildLocalHoverHitLayer(viewport) {
+    _buildLocalHoverHitLayer(viewport, hoverPaths = []) {
         this.hoverOwners = new Map();
+        this.hoverPathMap = new Map();
         const hitLayer = document.createElementNS(SVG_NS, "g");
         hitLayer.setAttribute("id", "local-hover-hit-layer");
+        hitLayer.setAttribute("pointer-events", "all");
+
+        for (const item of hoverPaths || []) {
+            if (!item || !item.handle || !item.path_d) continue;
+            this.hoverPathMap.set(item.handle, item.path_d);
+            const proxy = document.createElementNS(SVG_NS, "path");
+            proxy.setAttribute("d", item.path_d);
+            proxy.setAttribute("data-hover-proxy", "true");
+            proxy.setAttribute("data-handle", item.handle);
+            proxy.style.cursor = "pointer";
+            this._prepareHoverProxy(proxy);
+            hitLayer.appendChild(proxy);
+        }
 
         const owners = Array.from(viewport.querySelectorAll("[data-handle]"));
+        const shapeSelector = "path,line,polyline,polygon,circle,ellipse,rect";
         for (const owner of owners) {
             const handle = owner.getAttribute("data-handle");
             if (!handle || this.hoverOwners.has(handle)) continue;
             this.hoverOwners.set(handle, owner);
 
-            const proxy = owner.cloneNode(true);
-            proxy.removeAttribute("id");
-            proxy.removeAttribute("class");
-            proxy.setAttribute("data-hover-proxy", "true");
-            proxy.setAttribute("data-handle", handle);
-            proxy.style.cursor = "pointer";
-            this._prepareHoverProxy(proxy);
-            hitLayer.appendChild(proxy);
+            const shapes = owner.matches && owner.matches(shapeSelector)
+                ? [owner]
+                : Array.from(owner.querySelectorAll(shapeSelector));
+            for (const shape of shapes) {
+                const proxy = shape.cloneNode(false);
+                proxy.removeAttribute("id");
+                proxy.removeAttribute("class");
+                proxy.removeAttribute("style");
+                proxy.setAttribute("data-hover-proxy", "true");
+                proxy.setAttribute("data-handle", handle);
+                proxy.style.cursor = "pointer";
+                this._prepareHoverProxy(proxy);
+                hitLayer.appendChild(proxy);
+            }
         }
 
         viewport.appendChild(hitLayer);
@@ -906,9 +938,11 @@ class SvgViewer {
         for (const shape of shapes) {
             shape.removeAttribute("id");
             shape.removeAttribute("class");
+            shape.removeAttribute("style");
             shape.setAttribute("fill", "none");
-            shape.setAttribute("stroke", "rgba(255, 255, 255, 0.001)");
-            shape.setAttribute("stroke-width", "24");
+            shape.setAttribute("stroke", "#ffffff");
+            shape.setAttribute("stroke-opacity", "0.001");
+            shape.setAttribute("stroke-width", "32");
             shape.setAttribute("stroke-linecap", "round");
             shape.setAttribute("stroke-linejoin", "round");
             shape.setAttribute("vector-effect", "non-scaling-stroke");
@@ -926,12 +960,17 @@ class SvgViewer {
     _localHoverTarget(e) {
         const proxy = e.target && e.target.closest ? e.target.closest("[data-hover-proxy]") : null;
         if (proxy && this.svg.contains(proxy)) {
-            return this.hoverOwners.get(proxy.getAttribute("data-handle")) || null;
+            const handle = proxy.getAttribute("data-handle");
+            const pathD = this.hoverPathMap.get(handle);
+            if (pathD) return { handle, pathD };
+            return this.hoverOwners.get(handle) || null;
         }
 
         const direct = e.target && e.target.closest ? e.target.closest("[data-handle]") : null;
         if (direct && this.svg.contains(direct)) {
             const handle = direct.getAttribute("data-handle");
+            const pathD = this.hoverPathMap.get(handle);
+            if (pathD) return { handle, pathD };
             return this.hoverOwners.get(handle) || direct;
         }
 
@@ -939,11 +978,16 @@ class SvgViewer {
             if (!this.svg.contains(element) || !element.closest) continue;
             const proxyCandidate = element.closest("[data-hover-proxy]");
             if (proxyCandidate && this.svg.contains(proxyCandidate)) {
-                return this.hoverOwners.get(proxyCandidate.getAttribute("data-handle")) || null;
+                const handle = proxyCandidate.getAttribute("data-handle");
+                const pathD = this.hoverPathMap.get(handle);
+                if (pathD) return { handle, pathD };
+                return this.hoverOwners.get(handle) || null;
             }
             const candidate = element.closest("[data-handle]");
             if (candidate && this.svg.contains(candidate)) {
                 const handle = candidate.getAttribute("data-handle");
+                const pathD = this.hoverPathMap.get(handle);
+                if (pathD) return { handle, pathD };
                 return this.hoverOwners.get(handle) || candidate;
             }
         }

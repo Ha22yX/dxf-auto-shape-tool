@@ -43,7 +43,7 @@ const App = {
                     parameterPanel.setShowGenerated(result.show_generated);
                 }
 
-                svgViewer.setBaseSvg(result.base_svg);
+                svgViewer.setBaseSvg(result.base_svg, result.hover_paths || []);
 
                 wsClient.connect(this.sessionId);
                 wsClient.onMessage = (msg) => this._handleWsMessage(msg);

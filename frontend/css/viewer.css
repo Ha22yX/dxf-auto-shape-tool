@@ -48,7 +48,7 @@
 }
 
 #local-hover-hit-layer [data-hover-proxy] {
-    pointer-events: all;
+    pointer-events: stroke;
 }
 
 #local-hover-hit-layer [data-hover-proxy] * {
