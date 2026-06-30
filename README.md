@@ -2,7 +2,7 @@
 
 English | [中文](README.zh-CN.md)
 
-![Surfboard vacuum table DXF generator preview](Pic.png)
+![Surfboard vacuum table DXF generator preview](docs/assets/Pic.png)
 
 This is a local web tool for generating DXF machining geometry for a surfboard fabric vacuum table used with Rufa.com / Rufa surfboard sewing equipment.
 
@@ -68,13 +68,13 @@ Default values are maintained in `DEFAULT_PARAMS` inside [backend/config.py](bac
 For the Windows desktop launcher, double-click:
 
 ```text
-启动桌面管理器.vbs
+scripts/windows/start-manager-hidden.vbs
 ```
 
 You can also use the command script if a brief console window is acceptable:
 
 ```text
-启动桌面管理器.cmd
+scripts/windows/start-manager.cmd
 ```
 
 This opens a small control window that:
@@ -94,7 +94,7 @@ packaging entry point.
 The older console-only startup script is still available:
 
 ```text
-一键启动服务.cmd
+scripts/windows/start-service.cmd
 ```
 
 The script stops any old local service, starts a new one, and opens:
@@ -114,6 +114,12 @@ Or:
 
 ```bash
 python main.py
+```
+
+To rebuild the standalone Windows executable on a development machine, run:
+
+```text
+packaging/build-exe.cmd
 ```
 
 ## Project Structure
@@ -146,6 +152,9 @@ frontend/
 
 tests/                      Automated tests
 Test Files/                 Manual DXF test files
+docs/assets/                README images and documentation assets
+packaging/                  PyInstaller spec and executable build script
+scripts/windows/            Windows launcher and service helper scripts
 temp/                       Runtime temporary files
 ```
 

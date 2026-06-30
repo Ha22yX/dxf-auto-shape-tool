@@ -1,7 +1,9 @@
 @echo off
 setlocal
 title DXF Auto Shape Tool Service
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..\..") do set "PROJECT_ROOT=%%~fI"
+cd /d "%PROJECT_ROOT%"
 
 echo ========================================
 echo DXF Auto Shape Tool Service
@@ -9,7 +11,7 @@ echo ========================================
 echo.
 
 echo Stopping old service instances...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop_old_service.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%stop_old_service.ps1"
 
 set "PYTHON_CMD="
 if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"

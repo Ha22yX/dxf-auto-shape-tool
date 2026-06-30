@@ -1,7 +1,9 @@
 @echo off
 setlocal
 title DXF Auto Shape Tool Launcher
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..\..") do set "PROJECT_ROOT=%%~fI"
+cd /d "%PROJECT_ROOT%"
 
 set "PYTHON_CMD="
 set "PYTHONW_CMD="
@@ -31,11 +33,11 @@ pause
 exit /b 1
 
 :run_launcher_hidden
-start "" "%PYTHONW_CMD%" "%~dp0launcher.py"
+start "" "%PYTHONW_CMD%" "%PROJECT_ROOT%\launcher.py"
 exit /b 0
 
 :run_launcher
-"%PYTHON_CMD%" launcher.py
+"%PYTHON_CMD%" "%PROJECT_ROOT%\launcher.py"
 if errorlevel 1 (
     echo.
     echo Launcher exited with an error.

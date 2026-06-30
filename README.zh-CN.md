@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-![冲浪板吸附台 DXF 自动生成工具预览](Pic.png)
+![冲浪板吸附台 DXF 自动生成工具预览](docs/assets/Pic.png)
 
 这是一个本地网页工具，用来根据冲浪板外形 DXF，自动生成用于 Rufa.com / Rufa 公司的冲浪板缝合机布料吸附台的辅助加工图形。
 
@@ -68,13 +68,13 @@ Rufa 公司网址：[http://rufajx.com/](http://rufajx.com/)
 推荐使用 Windows 桌面管理器，直接双击：
 
 ```text
-启动桌面管理器.vbs
+scripts/windows/start-manager-hidden.vbs
 ```
 
 如果不介意短暂出现命令行窗口，也可以双击：
 
 ```text
-启动桌面管理器.cmd
+scripts/windows/start-manager.cmd
 ```
 
 它会打开一个小窗口：
@@ -93,7 +93,7 @@ Rufa 公司网址：[http://rufajx.com/](http://rufajx.com/)
 旧的控制台启动脚本仍然保留：
 
 ```text
-一键启动服务.cmd
+scripts/windows/start-service.cmd
 ```
 
 脚本会先关闭旧的本地服务，再启动新的服务，并打开：
@@ -113,6 +113,12 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 ```bash
 python main.py
+```
+
+在开发机上重新打包 Windows 单文件 exe：
+
+```text
+packaging/build-exe.cmd
 ```
 
 ## 项目结构
@@ -145,6 +151,9 @@ frontend/
 
 tests/                      自动化测试
 Test Files/                 手工测试 DXF 文件
+docs/assets/                README 图片和文档资源
+packaging/                  PyInstaller 配置和打包脚本
+scripts/windows/            Windows 启动器和服务辅助脚本
 temp/                       运行时临时文件
 ```
 

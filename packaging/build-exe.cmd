@@ -1,7 +1,9 @@
 @echo off
 setlocal
 title Build DXF Auto Shape Tool EXE
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "PROJECT_ROOT=%%~fI"
+cd /d "%PROJECT_ROOT%"
 
 set "PYTHON_CMD="
 if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"
@@ -30,12 +32,12 @@ if errorlevel 1 (
 )
 
 echo Building executable...
-"%PYTHON_CMD%" -m PyInstaller --noconfirm --clean "DXF自动图形工具.spec"
+"%PYTHON_CMD%" -m PyInstaller --noconfirm --clean "packaging\dxf-auto-shape-tool.spec"
 if errorlevel 1 goto fail
 
 echo.
 echo Build complete:
-echo %~dp0dist\DXF自动图形工具.exe
+echo %PROJECT_ROOT%\dist\DXF Auto Shape Tool EXE was generated.
 pause
 exit /b 0
 
