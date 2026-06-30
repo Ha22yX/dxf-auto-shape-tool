@@ -68,6 +68,12 @@ Default values are maintained in `DEFAULT_PARAMS` inside [backend/config.py](bac
 For the Windows desktop launcher, double-click:
 
 ```text
+启动桌面管理器.vbs
+```
+
+You can also use the command script if a brief console window is acceptable:
+
+```text
 启动桌面管理器.cmd
 ```
 

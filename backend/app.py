@@ -52,6 +52,10 @@ def _remove_session_files(session_ids: list[str]):
                 pass
 
 
+def _service_log(message: str):
+    print(f"[DXF工具] {message}", flush=True)
+
+
 @app.get("/")
 async def root():
     index_file = frontend_dir / "index.html"
@@ -104,6 +108,9 @@ async def upload_dxf(file: UploadFile = File(...)):
     create_session(session_id, state)
     _remove_session_files(delete_other_sessions(session_id))
     _cleanup_temp_files(active_session_id=session_id)
+    _service_log(
+        f"上传DXF：session={session_id[:8]}，文件={file.filename}，实体数={len(list(working_doc.modelspace()))}"
+    )
 
     return {
         "session_id": session_id,
@@ -195,10 +202,15 @@ async def select_entity(session_id: str, data: dict):
     append = bool(data.get("append", False))
     handle = _select_handle(state, data)
     if not handle:
+        _service_log(f"选择边失败：session={session_id[:8]}，附近没有可选对象")
         return {"status": "no_selection"}
 
     _apply_selection(state, handle, append)
     regenerate(state)
+    _service_log(
+        f"选择可选边：session={session_id[:8]}，handle={handle}，追加={append}，"
+        f"已选边={len(state.selected_handles)}，链段={state.chain_info.get('segment_count', 0)}"
+    )
 
     return _preview_payload(state)["data"]
 
@@ -211,6 +223,12 @@ async def update_params(session_id: str, data: dict):
 
     state.params = CircleParams.from_dict(data)
     regenerate(state)
+    _service_log(
+        f"更新参数：session={session_id[:8]}，射线数量={state.params.ray_count}，"
+        f"圆半径={state.params.circle_radius}，每射线圆数={state.params.circles_per_ray}，"
+        f"顶部间隔={state.params.top_gap_distance}，长条起点距离={state.params.capsule_start_distance}，"
+        f"胶囊安全间距={state.params.capsule_clearance_distance}"
+    )
 
     return {
         "params": state.params.to_dict(),
@@ -226,6 +244,7 @@ async def toggle_preview(session_id: str, data: dict):
         raise HTTPException(status_code=404, detail="会话不存在")
 
     state.show_generated = bool(data.get("show_generated", True))
+    _service_log(f"切换预览显示：session={session_id[:8]}，显示生成图={state.show_generated}")
     return {"show_generated": state.show_generated}
 
 
@@ -250,7 +269,14 @@ async def download_dxf(session_id: str):
                 manual_apex_distance=state.manual_apex_distance,
             )
         except Exception as e:
-            print(f"生成圆失败: {e}")
+            _service_log(f"生成DXF失败：session={session_id[:8]}，错误={e}")
+        else:
+            _service_log(
+                f"导出DXF：session={session_id[:8]}，链段={len(state.selected_chain)}，"
+                f"生成数量={state.preview_geometry.get('generated_count', 0)}"
+            )
+    else:
+        _service_log(f"导出DXF：session={session_id[:8]}，没有选中边，仅导出原图")
 
     stream = io.StringIO()
     output_doc.write(stream)
@@ -314,23 +340,35 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 append = bool(data.get("append", False))
                 handle = _select_handle(state, data)
                 if not handle:
+                    _service_log(f"选择边失败：session={session_id[:8]}，附近没有可选对象")
                     await websocket.send_json({"type": "no_selection", "data": {}})
                     continue
 
                 _apply_selection(state, handle, append)
                 regenerate(state)
+                _service_log(
+                    f"选择可选边：session={session_id[:8]}，handle={handle}，追加={append}，"
+                    f"已选边={len(state.selected_handles)}，链段={state.chain_info.get('segment_count', 0)}"
+                )
                 await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "params_change":
                 seq = data.get("seq", None)
                 state.params = CircleParams.from_dict(data.get("params", {}))
                 regenerate(state)
+                _service_log(
+                    f"更新参数：session={session_id[:8]}，seq={seq}，射线数量={state.params.ray_count}，"
+                    f"圆半径={state.params.circle_radius}，每射线圆数={state.params.circles_per_ray}，"
+                    f"顶部间隔={state.params.top_gap_distance}，长条起点距离={state.params.capsule_start_distance}，"
+                    f"胶囊安全间距={state.params.capsule_clearance_distance}"
+                )
                 extra = {"params_seq": seq} if seq is not None else {}
                 await websocket.send_json(_preview_payload(state, **extra))
 
 
             elif msg_type == "toggle_preview":
                 state.show_generated = bool(data.get("show_generated", True))
+                _service_log(f"切换预览显示：session={session_id[:8]}，显示生成图={state.show_generated}")
                 await websocket.send_json(_preview_payload(state))
 
             elif msg_type == "svg_hover":
@@ -362,6 +400,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "is_closed": False,
                 }
                 regenerate(state)
+                _service_log(f"清空选择：session={session_id[:8]}")
                 await websocket.send_json({"type": "cleared", "data": {}})
 
             else:

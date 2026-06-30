@@ -68,6 +68,12 @@ Rufa 公司网址：[http://rufajx.com/](http://rufajx.com/)
 推荐使用 Windows 桌面管理器，直接双击：
 
 ```text
+启动桌面管理器.vbs
+```
+
+如果不介意短暂出现命令行窗口，也可以双击：
+
+```text
 启动桌面管理器.cmd
 ```
 
