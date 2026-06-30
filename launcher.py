@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import collections
+import ipaddress
+import json
 import os
 import queue
 import socket
@@ -24,7 +26,7 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
 
-APP_TITLE = "DXF 自动图形工具"
+APP_TITLE = "DXF自动图形工具"
 DEFAULT_PORT = int(os.environ.get("PORT", "8000"))
 SERVICE_HOST = "0.0.0.0"
 LOG_BUFFER_LINES = 2000
@@ -55,18 +57,119 @@ def _service_child(host: str, port: int) -> None:
 
 
 def _lan_ip() -> str:
+    ps_ip = _lan_ip_from_windows_adapters()
+    if ps_ip:
+        return ps_ip
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.connect(("8.8.8.8", 80))
-            return sock.getsockname()[0]
+            ip = sock.getsockname()[0]
+            if _is_lan_ipv4(ip):
+                return ip
         finally:
             sock.close()
     except OSError:
-        try:
-            return socket.gethostbyname(socket.gethostname())
-        except OSError:
-            return "127.0.0.1"
+        pass
+
+    try:
+        for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = item[4][0]
+            if _is_lan_ipv4(ip):
+                return ip
+    except OSError:
+        pass
+    return "127.0.0.1"
+
+
+def _is_lan_ipv4(value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    if ip.version != 4:
+        return False
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+        return False
+    if ip in ipaddress.ip_network("198.18.0.0/15"):
+        return False
+    return True
+
+
+def _lan_ip_score(value: str, alias: str = "", description: str = "") -> int:
+    if not _is_lan_ipv4(value):
+        return -1
+    ip = ipaddress.ip_address(value)
+    text = f"{alias} {description}".lower()
+    score = 10
+    if ip.is_private:
+        score += 100
+    if value.startswith("192.168."):
+        score += 40
+    elif value.startswith("10."):
+        score += 30
+    elif ip in ipaddress.ip_network("172.16.0.0/12"):
+        score += 30
+    virtual_words = (
+        "virtual", "vmware", "virtualbox", "hyper-v", "wsl", "docker",
+        "tap", "loopback", "vpn", "meta", "clash", "tailscale", "zerotier",
+    )
+    if any(word in text for word in virtual_words):
+        score -= 80
+    if "wi-fi" in text or "wifi" in text or "wlan" in text:
+        score += 15
+    if "ethernet" in text or "以太网" in text:
+        score += 10
+    return score
+
+
+def _lan_ip_from_windows_adapters() -> str | None:
+    if os.name != "nt":
+        return None
+    script = (
+        "$items = Get-NetIPConfiguration | "
+        "Where-Object { $_.IPv4Address -and $_.IPv4DefaultGateway } | "
+        "ForEach-Object { [pscustomobject]@{ "
+        "Alias=$_.InterfaceAlias; Description=$_.InterfaceDescription; "
+        "IPv4=($_.IPv4Address | Select-Object -First 1).IPAddress; "
+        "Gateway=($_.IPv4DefaultGateway | Select-Object -First 1).NextHop } }; "
+        "$items | ConvertTo-Json -Compress"
+    )
+    try:
+        output = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", script],
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            timeout=3,
+        ).strip()
+    except Exception:
+        return None
+    if not output:
+        return None
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(data, dict):
+        data = [data]
+
+    best_ip = None
+    best_score = -1
+    for item in data:
+        ip = str(item.get("IPv4") or "")
+        score = _lan_ip_score(
+            ip,
+            str(item.get("Alias") or ""),
+            str(item.get("Description") or ""),
+        )
+        if score > best_score:
+            best_ip = ip
+            best_score = score
+    return best_ip if best_score >= 0 else None
 
 
 def _port_pids(port: int) -> set[int]:
@@ -127,7 +230,7 @@ class LauncherApp:
         self.log_text: scrolledtext.ScrolledText | None = None
         self.lan_ip = _lan_ip()
 
-        self.root.title(f"{APP_TITLE} - 服务启动器")
+        self.root.title(APP_TITLE)
         self.root.geometry("560x340")
         self.root.minsize(520, 320)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -156,7 +259,7 @@ class LauncherApp:
 
         title = tk.Label(
             main,
-            text=f"{APP_TITLE}正在运行中",
+            text=APP_TITLE,
             font=("Microsoft YaHei UI", 16, "bold"),
             anchor="w",
         )
