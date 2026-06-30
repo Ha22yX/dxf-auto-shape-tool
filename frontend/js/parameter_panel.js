@@ -278,11 +278,11 @@ class ParameterPanel {
             ),
             capsule_start_distance: this._normalizeInputValue(
                 "capsule_start_distance",
-                parse("capsule_start_distance", 0.1),
+                parse("capsule_start_distance", 10),
             ),
             capsule_clearance_distance: this._normalizeInputValue(
                 "capsule_clearance_distance",
-                parse("capsule_clearance_distance", 0),
+                parse("capsule_clearance_distance", 2),
             ),
             capsule_axis_gap_above_distance: this._normalizeInputValue(
                 "capsule_axis_gap_above_distance",
@@ -294,7 +294,7 @@ class ParameterPanel {
             ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",
-                parse("top_gap_distance", 0),
+                parse("top_gap_distance", 40),
             ),
             ray_count: this._normalizeInputValue(
                 "ray_count",

@@ -81,6 +81,8 @@ def test_circle_generator():
         ray_offset=1.0,
         ray_count=4,
         ray_direction="inward",
+        top_gap_distance=0.0,
+        capsule_clearance_distance=0.0,
     )
     circle_handles, ray_handles = circle_generator.generate_circles(doc, handles, params)
     assert len(circle_handles) == 8  # 4 rays * 2 circles
@@ -125,6 +127,8 @@ def test_circle_generator_on_arc():
         ray_offset=1.0,
         ray_count=4,
         ray_direction="inward",
+        top_gap_distance=0.0,
+        capsule_clearance_distance=0.0,
     )
     circle_handles, _ = circle_generator.generate_circles(doc, [handle], params)
     assert len(circle_handles) == 8  # 4 rays * 2 circles
@@ -152,6 +156,8 @@ def test_circle_generator_on_lwpolyline_bulge():
         ray_offset=0.5,
         ray_count=3,
         ray_direction="inward",
+        top_gap_distance=0.0,
+        capsule_clearance_distance=0.0,
     )
     circle_handles, _ = circle_generator.generate_circles(doc, [handle], params)
     assert len(circle_handles) == 6  # 3 rays * 2 circles
@@ -178,6 +184,8 @@ def test_circle_generator_on_polyline_bulge():
         ray_offset=0.5,
         ray_count=3,
         ray_direction="inward",
+        top_gap_distance=0.0,
+        capsule_clearance_distance=0.0,
     )
     circle_handles, _ = circle_generator.generate_circles(doc, [handle], params)
     assert len(circle_handles) == 6
@@ -374,7 +382,7 @@ def test_preview_returns_symmetry_axis_overlay():
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()
     poly = msp.add_lwpolyline([(0, 0), (10, 10), (20, 0)], close=False)
-    params = CircleParams(ray_count=1, circles_per_ray=1)
+    params = CircleParams(ray_count=1, circles_per_ray=1, top_gap_distance=0.0)
 
     preview = circle_generator.compute_preview_geometry(
         doc,
@@ -407,7 +415,7 @@ def test_preview_returns_symmetry_axis_overlay():
 def test_preview_returns_manual_apex_marker():
     doc = make_rect_doc()
     handle = next(e.dxf.handle for e in doc.modelspace())
-    params = CircleParams(ray_count=1, circles_per_ray=1)
+    params = CircleParams(ray_count=1, circles_per_ray=1, top_gap_distance=0.0)
 
     preview = circle_generator.compute_preview_geometry(
         doc,
@@ -425,7 +433,7 @@ def test_preview_returns_manual_apex_marker():
 def test_preview_returns_default_apex_marker_without_manual_selection():
     doc = make_rect_doc()
     handles = [e.dxf.handle for e in doc.modelspace()]
-    params = CircleParams(ray_count=4, circle_radius=2.0)
+    params = CircleParams(ray_count=4, circle_radius=2.0, top_gap_distance=0.0)
 
     preview = circle_generator.compute_preview_geometry(
         doc,
@@ -452,6 +460,7 @@ def test_overlap_pruning_marks_removed_circles_and_skips_export():
         ray_count=3,
         ray_direction="outward",
         dedupe_closed_rays=False,
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -481,7 +490,7 @@ def test_overlap_pruning_marks_removed_circles_and_skips_export():
 
 def test_overlap_pruning_does_not_delete_both_circles_in_same_mirror_group():
     doc = ezdxf.new("R2010")
-    params = CircleParams(circle_radius=3.0)
+    params = CircleParams(circle_radius=3.0, top_gap_distance=0.0)
     placements = [
         {
             "point": Vec2(-1, 0),
@@ -516,6 +525,8 @@ def test_capsule_overlap_pruning_removes_outer_circles_first_symmetrically():
         circle_spacing=10.0,
         ray_offset=4.0,
         capsule_start_distance=4.0,
+        top_gap_distance=0.0,
+        capsule_clearance_distance=0.0,
     )
     placements = [
         {
@@ -558,6 +569,7 @@ def test_capsule_clearance_pruning_removes_only_one_conflicting_side_without_axi
         circle_spacing=10.0,
         ray_offset=4.0,
         capsule_start_distance=4.0,
+        top_gap_distance=0.0,
     )
     placements = [
         {
@@ -606,6 +618,7 @@ def test_circle_generator_on_circle():
         ray_offset=1.0,
         ray_count=8,
         ray_direction="inward",
+        top_gap_distance=0.0,
     )
     circle_handles, _ = circle_generator.generate_circles(doc, [handle], params, closed=True)
     assert len(circle_handles) == 16
@@ -627,6 +640,7 @@ def test_closed_chain_endpoint_rays_can_be_deduped():
         ray_count=5,
         ray_direction="inward",
         dedupe_closed_rays=True,
+        top_gap_distance=0.0,
     )
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
     assert len(placements) == 5
@@ -649,6 +663,7 @@ def test_dedupe_switch_skips_terminal_endpoint_even_if_open():
         ray_count=3,
         ray_direction="inward",
         dedupe_closed_rays=True,
+        top_gap_distance=0.0,
     )
 
     placements = circle_generator.compute_placements(
@@ -676,6 +691,7 @@ def test_preview_rays_start_on_selected_edge():
         ray_offset=10.0,
         ray_count=1,
         ray_direction="outward",
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -699,6 +715,7 @@ def test_preview_returns_basis_for_fast_frontend_redraw():
         ray_offset=10.0,
         ray_count=3,
         ray_direction="outward",
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -726,6 +743,7 @@ def test_preview_returns_capsule_paths_for_each_ray():
         capsule_start_distance=4.0,
         ray_count=2,
         ray_direction="outward",
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -752,6 +770,7 @@ def test_generate_circles_exports_capsule_outline_entities():
         capsule_start_distance=1.0,
         ray_count=1,
         ray_direction="outward",
+        top_gap_distance=0.0,
     )
 
     circle_handles, ray_handles = circle_generator.generate_circles(
@@ -782,6 +801,7 @@ def test_capsule_axis_gap_skips_capsules_but_keeps_circles_in_preview_and_export
         capsule_axis_gap_below_distance=1000.0,
         ray_count=6,
         ray_direction="outward",
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -817,6 +837,7 @@ def test_capsule_axis_gap_guide_can_use_different_above_and_below_distances():
     params = CircleParams(
         capsule_axis_gap_above_distance=10.0,
         capsule_axis_gap_below_distance=30.0,
+        top_gap_distance=0.0,
     )
 
     preview = circle_generator.compute_preview_geometry(
@@ -870,6 +891,7 @@ def test_capsule_start_stays_parameter_controlled_when_inner_circle_removed():
         circle_spacing=10.0,
         ray_offset=10.0,
         capsule_start_distance=10.0,
+        top_gap_distance=0.0,
     )
     kept_items = [
         {"circle_index": 1, "center": Vec2(0, 20)},
@@ -894,7 +916,7 @@ def test_open_chain_normals_do_not_flip_sides():
         SimpleNamespace(normal=Vec2(0, -1)),
         SimpleNamespace(normal=Vec2(0, 1)),
     ]
-    params = CircleParams(ray_direction="inward")
+    params = CircleParams(ray_direction="inward", top_gap_distance=0.0)
 
     normals = circle_generator._oriented_normals(doc, [], samples, params, closed=False)
 
