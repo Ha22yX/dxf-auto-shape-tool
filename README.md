@@ -65,7 +65,27 @@ Default values are maintained in `DEFAULT_PARAMS` inside [backend/config.py](bac
 
 ## Quick Start
 
-The recommended way is to double-click:
+For the Windows desktop launcher, double-click:
+
+```text
+启动桌面管理器.cmd
+```
+
+This opens a small control window that:
+
+- starts the local web service automatically;
+- shows both `127.0.0.1` and LAN access URLs;
+- opens the web page with one button;
+- shows service status with a green/red indicator;
+- can start/stop the service;
+- displays a bounded live website log window;
+- stops the web service when the launcher window closes.
+
+The launcher entry point is [launcher.py](launcher.py). It uses only the Python
+standard library for the desktop UI and is suitable as the future executable
+packaging entry point.
+
+The older console-only startup script is still available:
 
 ```text
 一键启动服务.cmd
