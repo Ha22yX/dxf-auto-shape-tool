@@ -9,6 +9,8 @@ temp/*
 !temp/.gitignore
 server.log
 server.err.log
+build/
+dist/
 
 # Local env
 .venv/
