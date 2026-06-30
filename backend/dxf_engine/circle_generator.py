@@ -834,9 +834,16 @@ def _horizontal_intersection(a, b, y):
 
 
 def _clip_polyline_to_horizontal(points, y, keep_above):
+    segments = _clip_polyline_segments_to_horizontal(points, y, keep_above)
+    if not segments:
+        return _dedupe_air_duct_points(points)
+    return max(segments, key=_polyline_length)
+
+
+def _clip_polyline_segments_to_horizontal(points, y, keep_above):
     points = _dedupe_air_duct_points(points)
     if len(points) < 2:
-        return points
+        return []
 
     def inside(point):
         if keep_above:
@@ -867,9 +874,7 @@ def _clip_polyline_to_horizontal(points, y, keep_above):
         segments.append(_dedupe_air_duct_points(current))
 
     segments = [segment for segment in segments if len(segment) >= 2]
-    if not segments:
-        return points
-    return max(segments, key=_polyline_length)
+    return segments
 
 
 def _cross(a, b):
@@ -1639,31 +1644,58 @@ def _single_component_air_duct_slot_loops(records, params, region, endpoint_marg
     if len(inlet_ys) < 2:
         return []
 
-    if region.startswith("upper"):
-        outer_y = inlet_ys[0]
-        inner_y = inlet_ys[-1]
-        keep_above = True
-    elif region.startswith("lower"):
-        outer_y = inlet_ys[-1]
-        inner_y = inlet_ys[0]
-        keep_above = False
-    else:
+    if not (region.startswith("upper") or region.startswith("lower")):
         return []
 
-    outer_loop = _clip_polyline_to_horizontal(outer_curve, outer_y, keep_above)
-    inner_loop = _clip_polyline_to_horizontal(inner_curve, inner_y, keep_above)
+    # Keep the main duct strip intact. The horizontal inlet is not a region
+    # boundary; it is only an opening that joins the left and right duct sides.
+    # Clipping the duct curves at the inlet makes the whole guide appear cut in
+    # half, which is exactly the visual failure this function avoids.
     loops = [
-        _dedupe_air_duct_points(loop)
-        for loop in (outer_loop, inner_loop)
-        if len(_dedupe_air_duct_points(loop)) >= 3
+        _dedupe_air_duct_points(outer_curve),
+        _dedupe_air_duct_points(inner_curve),
     ]
-    if len(loops) != 2:
-        return []
+    if len(inlet) >= 4:
+        loops.append(_dedupe_air_duct_points(inlet))
+    return [
+        loop
+        for loop in loops
+        if len(loop) >= 3 and abs(_polygon_signed_area(loop)) > POINT_TOLERANCE
+    ]
 
-    # The two closed curves are the physical slot edges. They must not be
-    # collapsed into a single filled face; otherwise the duct becomes a solid
-    # "lake" and loses the inner boundary that defines the groove width.
-    return loops
+
+def _air_duct_records_form_end_cap(records, region):
+    if len(records) < 8:
+        return False
+    if region.endswith("_inner"):
+        return False
+    if not (region.startswith("upper") or region.startswith("lower")):
+        return False
+
+    points = [record["source_point"] for record in records]
+    ys = [point.y for point in points]
+    xs = [point.x for point in points]
+    span_y = max(ys) - min(ys)
+    span_x = max(xs) - min(xs)
+    average_width = sum(record.get("width", 0.0) for record in records) / len(records)
+    if span_y <= max(average_width * 1.5, span_x * 0.12, POINT_TOLERANCE * 100.0):
+        return False
+
+    edge_count = max(2, min(len(records) // 8, 12))
+    edge_ys = ys[:edge_count] + ys[-edge_count:]
+    edge_average_y = sum(edge_ys) / len(edge_ys)
+    guard = max(edge_count, len(records) // 10)
+
+    if region.startswith("upper"):
+        apex_index = max(range(len(ys)), key=lambda index: ys[index])
+        if apex_index < guard or apex_index >= len(records) - guard:
+            return False
+        return max(ys) - edge_average_y >= max(average_width, span_y * 0.35)
+
+    apex_index = min(range(len(ys)), key=lambda index: ys[index])
+    if apex_index < guard or apex_index >= len(records) - guard:
+        return False
+    return edge_average_y - min(ys) >= max(average_width, span_y * 0.35)
 
 
 def _air_duct_region_contours(records, total_length, params, region):
@@ -1684,27 +1716,31 @@ def _air_duct_region_contours(records, total_length, params, region):
     ]
     if not component_polygons:
         return []
+
+    if (
+        len(components) == 1
+        and _air_duct_records_form_end_cap(components[0], region)
+    ):
+        slot_loops = _single_component_air_duct_slot_loops(
+            components[0],
+            params,
+            region,
+            endpoint_margin=endpoint_margin,
+        )
+        if slot_loops:
+            slot_loops = _expand_air_duct_loops_to_cover_records(
+                slot_loops,
+                records,
+                endpoint_radius,
+            )
+            return [
+                {"role": f"outline_{index}", "points": loop}
+                for index, loop in enumerate(slot_loops)
+                if len(loop) >= 3
+            ]
+
     inlet_points = _air_duct_inlet_points(ordered, params, region, component_polygons)
     if inlet_points:
-        if len(component_polygons) == 1 and len(components) == 1:
-            slot_loops = _single_component_air_duct_slot_loops(
-                components[0],
-                params,
-                region,
-                endpoint_margin=endpoint_margin,
-            )
-            if slot_loops:
-                slot_loops = _expand_air_duct_loops_to_cover_records(
-                    slot_loops,
-                    records,
-                    endpoint_radius,
-                )
-                return [
-                    {"role": f"outline_{index}", "points": loop}
-                    for index, loop in enumerate(slot_loops)
-                    if len(loop) >= 3
-                ]
-
         if len(records) <= 20:
             union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
             if len(component_polygons) == 1:
@@ -1719,13 +1755,8 @@ def _air_duct_region_contours(records, total_length, params, region):
                     for polygon in component_polygons
                     for point in polygon
                 ] + inlet_points
-                if len(loops) > 1 or not _loops_cover_points(loops, coverage_points):
-                    bridged = _bridge_air_duct_components_with_inlet(
-                        component_polygons,
-                        inlet_points,
-                    )
-                    if bridged:
-                        loops = bridged
+                if not _loops_cover_points(loops, coverage_points):
+                    loops = component_polygons + [inlet_points]
             loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
             return [
                 {"role": f"outline_{index}", "points": loop}
@@ -1733,17 +1764,16 @@ def _air_duct_region_contours(records, total_length, params, region):
                 if len(loop) >= 3
             ]
 
-        # Dense real board path: return one closed outline per region. The
-        # previous fallback drew the duct envelope and inlet as separate
-        # contours, which looked like internal dividing lines.
+        # Dense real board path: keep the complete side duct and merge the
+        # horizontal inlet into it. Returning all union boundary loops preserves
+        # the groove's inner walls; returning only the largest loop turns the
+        # groove into a filled "lake".
+        union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
         if len(component_polygons) > 1:
-            bridged = _bridge_air_duct_components_with_inlet(
-                component_polygons,
-                inlet_points,
-            )
-            loops = bridged if bridged else component_polygons
+            loops = _union_polygons_boundary(component_polygons + [union_inlet_points])
+            if not loops:
+                loops = component_polygons + [inlet_points]
         else:
-            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
             loops = _union_polygon_with_rect_boundary(
                 component_polygons[0],
                 union_inlet_points,

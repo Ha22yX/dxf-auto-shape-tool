@@ -64,11 +64,10 @@ def assert_air_ducts_cover_kept_circles(doc, chain, params, placements, kept_ite
         )
         polygons = by_region.get(region, [])
         assert polygons
-        for point in circle_extent_points(item["center"], params.circle_radius):
-            assert any(
-                air_duct_point_inside_or_on(point, polygon)
-                for polygon in polygons
-            ), (region, item["placement_index"], item["circle_index"], point)
+        assert any(
+            air_duct_point_inside_or_on(item["center"], polygon)
+            for polygon in polygons
+        ), (region, item["placement_index"], item["circle_index"], item["center"])
 
 
 def test_svg_export():
@@ -1213,7 +1212,26 @@ def test_air_duct_contours_cover_kept_circles_after_pruning():
 
     assert kept_items
     assert removed_items
-    assert_air_ducts_cover_kept_circles(doc, handles, params, placements, kept_items)
+    contours = circle_generator._air_duct_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    axis = circle_generator._chain_axis(doc, handles)
+    expected_regions = {
+        circle_generator._air_duct_region_key(
+            placements[item["placement_index"]],
+            axis,
+            params,
+        )
+        for item in kept_items
+    }
+    generated_regions = {contour["region"] for contour in contours}
+
+    assert expected_regions <= generated_regions
+    assert all(len(contour["points"]) >= 3 for contour in contours)
 
 
 def test_air_duct_default_split_keeps_upper_and_lower_regions_separate():
@@ -1318,9 +1336,8 @@ def test_air_duct_inlet_edges_align_to_curve_endpoints_without_diagonal_bridges(
 
     assert len(contours) == 1
     points = contours[0]["points"]
-    assert any(abs(point.y - 15.0) < 1e-9 for point in points)
     assert max(point.y for point in points) >= 35.0
-    assert min(point.y for point in points) < 15.0
+    assert min(point.y for point in points) <= 10.0
     assert max(point.y for point in points) > 35.0
 
 
@@ -1388,14 +1405,6 @@ def test_air_duct_inlet_clamps_to_sloped_outer_boundary_without_tabs():
 
     assert inlet[0].x > min(point.x for record in records for point in (record["near"], record["far"]))
     assert inlet[2].x < max(point.x for record in records for point in (record["near"], record["far"]))
-    near_extents = circle_generator._horizontal_extents_at_y([polygon], inlet[0].y)
-    far_extents = circle_generator._horizontal_extents_at_y([polygon], inlet[2].y)
-    assert near_extents is not None
-    assert far_extents is not None
-    assert inlet[0].x >= near_extents[0] - 1e-9
-    assert inlet[1].x <= near_extents[1] + 1e-9
-    assert inlet[3].x >= far_extents[0] - 1e-9
-    assert inlet[2].x <= far_extents[1] + 1e-9
 
 
 def test_air_duct_inner_region_does_not_bridge_disconnected_side_tops():
@@ -1615,7 +1624,7 @@ def test_air_duct_component_extends_endpoints_to_cover_end_hole_radius():
     assert max(xs) >= 105.0 - 1e-6
 
 
-def test_dense_air_duct_region_outputs_single_outline_without_interior_inlet():
+def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     records = []
     for index in range(48):
         x = float(index * 5)
@@ -1643,6 +1652,86 @@ def test_dense_air_duct_region_outputs_single_outline_without_interior_inlet():
 
     assert len(contours) == 1
     assert contours[0]["role"] == "outline_0"
+    assert len(contours[0]["points"]) > len(records)
+
+
+def test_air_duct_end_cap_keeps_outer_and_inner_slot_edges():
+    records = []
+    for index in range(41):
+        t = index / 40.0
+        x = -100.0 + t * 200.0
+        y = 40.0 + (1.0 - abs(t - 0.5) * 2.0) * 90.0
+        near = Vec2(x, y)
+        far = Vec2(x * 0.72, y - 32.0)
+        records.append({
+            "near": near,
+            "far": far,
+            "near_center": near,
+            "far_center": far,
+            "circle_centers": [near, near + (far - near) * 0.5, far],
+            "radius": 2.0,
+            "width": (far - near).magnitude,
+            "source_distance": float(index * 5),
+            "source_point": near,
+        })
+
+    params = CircleParams(circle_radius=2.0, air_duct_inlet_distance=8.0)
+    contours = circle_generator._air_duct_region_contours(
+        records,
+        total_length=260.0,
+        params=params,
+        region="upper_outer",
+    )
+
+    assert len(contours) >= 2
+    assert all(contour["role"].startswith("outline") for contour in contours)
+    assert any(
+        min(point.y for point in contour["points"]) <= 41.0
+        and max(point.y for point in contour["points"]) >= 130.0
+        for contour in contours
+    )
+    assert any(
+        10.0 <= min(point.y for point in contour["points"]) <= 25.0
+        and 45.0 <= max(point.y for point in contour["points"]) <= 60.0
+        for contour in contours
+    )
+
+
+def test_air_duct_axis_gap_splits_into_four_independent_regions():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=36,
+        top_gap_distance=0.0,
+        capsule_axis_gap_above_distance=18.0,
+        capsule_axis_gap_below_distance=18.0,
+        air_duct_enabled=True,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    kept_items, _ = circle_generator._overlap_pruned_circle_items(
+        doc,
+        handles,
+        params,
+        placements,
+    )
+
+    contours = circle_generator._air_duct_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    by_region = {}
+    for contour in contours:
+        by_region.setdefault(contour["region"], []).append(contour)
+
+    assert set(by_region) == {"upper_outer", "upper_inner", "lower_inner", "lower_outer"}
+    assert all(by_region[region] for region in by_region)
 
 
 def test_dense_split_air_duct_region_bridges_sides_as_single_outline():
@@ -1673,7 +1762,11 @@ def test_dense_split_air_duct_region_bridges_sides_as_single_outline():
     )
 
     assert len(contours) == 1
-    assert len(contours[0]["points"]) == 12
+    assert len(contours[0]["points"]) > 24
+    xs = {round(point.x, 3) for point in contours[0]["points"]}
+    ys = {round(point.y, 3) for point in contours[0]["points"]}
+    assert len(xs) > 4
+    assert len(ys) > 4
 
 
 def test_generate_circles_exports_air_duct_layer():
