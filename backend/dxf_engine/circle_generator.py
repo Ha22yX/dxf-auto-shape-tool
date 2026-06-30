@@ -1986,34 +1986,70 @@ def _smooth_base_plate_side_x(values, is_left_side):
     return smoothed
 
 
-def _base_plate_stable_end_index(left_xs, right_xs, radius, margin, from_start):
+def _base_plate_end_cap_xs(left_xs, right_xs, radius, margin, from_start, cap_center, cap_width):
     widths = [
         max(0.0, right - left)
         for left, right in zip(left_xs, right_xs)
     ]
-    if len(widths) < 4:
-        return 0 if from_start else len(widths) - 1
+    index = 0 if from_start else len(widths) - 1
+    if not widths:
+        return 0.0, 0.0
 
     max_width = max(widths)
+    left = left_xs[index]
+    right = right_xs[index]
     if max_width <= POINT_TOLERANCE:
-        return 0 if from_start else len(widths) - 1
+        return left, right
 
-    # Rounded surfboard noses/tails collapse to a very narrow scan width at the
-    # last sample. Using that width for a flat base-plate end produces the
-    # small square tab the user sees. Pick a nearby stable width instead.
-    threshold = max(max_width * 0.18, max(0.0, radius) * 3.0, margin * 0.8)
-    search_count = max(3, min(len(widths), int(math.ceil(len(widths) * 0.28))))
-    if from_start:
-        indexes = range(search_count)
-        fallback = 0
+    # Rounded surfboard noses/tails often have no usable width exactly at the
+    # highest/lowest point. Give the flat end a small manufacturable width, but
+    # keep it centered on the real end instead of borrowing a much wider inner
+    # cross-section, which creates wing-like tabs.
+    current_width = max(0.0, cap_width)
+    min_width = min(
+        max_width,
+        max(
+            current_width,
+            min(max_width * 0.12, max(margin, 0.0) * 0.8, max(radius, 0.0) * 3.0),
+        ),
+    )
+    if current_width >= min_width - POINT_TOLERANCE:
+        return cap_center - current_width * 0.5, cap_center + current_width * 0.5
+
+    return cap_center - min_width * 0.5, cap_center + min_width * 0.5
+
+
+def _base_plate_extreme_cap(points, target_y, radius, margin, use_lower_side):
+    band = max(
+        POINT_TOLERANCE * 20.0,
+        min(
+            max(max(radius, 0.0) * 3.0, max(margin, 0.0) * 0.6),
+            max(max(radius, 0.0) * 6.0, max(margin, 0.0) * 1.2, 1.0),
+        ),
+    )
+    if use_lower_side:
+        candidates = [
+            point
+            for point in points
+            if target_y - POINT_TOLERANCE <= point.y <= target_y + band
+        ]
     else:
-        indexes = range(len(widths) - 1, len(widths) - search_count - 1, -1)
-        fallback = len(widths) - 1
-
-    for index in indexes:
-        if widths[index] >= threshold:
-            return index
-    return fallback
+        candidates = [
+            point
+            for point in points
+            if target_y - band <= point.y <= target_y + POINT_TOLERANCE
+        ]
+    if not candidates:
+        candidates = [
+            point
+            for point in points
+            if abs(point.y - target_y) <= max(POINT_TOLERANCE * 20.0, 1e-6)
+        ]
+    if not candidates:
+        return None, 0.0
+    min_x = min(point.x for point in candidates)
+    max_x = max(point.x for point in candidates)
+    return (min_x + max_x) * 0.5, max_x - min_x
 
 
 def _air_duct_base_plate_polygon(
@@ -2096,22 +2132,56 @@ def _air_duct_base_plate_polygon(
     )
     bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
     top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
-    bottom_index = (
-        0 if lower_flat_y is not None
-        else _base_plate_stable_end_index(left_xs, right_xs, radius, margin, True)
+    bottom_cap_center, bottom_cap_width = _base_plate_extreme_cap(
+        all_points,
+        min_y,
+        radius,
+        margin,
+        True,
     )
-    top_index = (
-        len(ys) - 1 if upper_flat_y is not None
-        else _base_plate_stable_end_index(left_xs, right_xs, radius, margin, False)
+    top_cap_center, top_cap_width = _base_plate_extreme_cap(
+        all_points,
+        max_y,
+        radius,
+        margin,
+        False,
     )
+    if bottom_cap_center is None:
+        bottom_cap_center = (left_xs[0] + right_xs[0]) * 0.5
+    if top_cap_center is None:
+        top_cap_center = (left_xs[-1] + right_xs[-1]) * 0.5
+    if lower_flat_y is not None:
+        bottom_left_x, bottom_right_x = left_xs[0], right_xs[0]
+    else:
+        bottom_left_x, bottom_right_x = _base_plate_end_cap_xs(
+            left_xs,
+            right_xs,
+            radius,
+            margin,
+            True,
+            bottom_cap_center,
+            bottom_cap_width,
+        )
+    if upper_flat_y is not None:
+        top_left_x, top_right_x = left_xs[-1], right_xs[-1]
+    else:
+        top_left_x, top_right_x = _base_plate_end_cap_xs(
+            left_xs,
+            right_xs,
+            radius,
+            margin,
+            False,
+            top_cap_center,
+            top_cap_width,
+        )
 
-    left_side = [Vec2(left_xs[bottom_index], bottom_y)]
+    left_side = [Vec2(bottom_left_x, bottom_y)]
     left_side.extend(Vec2(x, y) for y, x in zip(ys, left_xs))
-    left_side.append(Vec2(left_xs[top_index], top_y))
+    left_side.append(Vec2(top_left_x, top_y))
 
-    right_side = [Vec2(right_xs[top_index], top_y)]
+    right_side = [Vec2(top_right_x, top_y)]
     right_side.extend(Vec2(x, y) for y, x in zip(reversed(ys), reversed(right_xs)))
-    right_side.append(Vec2(right_xs[bottom_index], bottom_y))
+    right_side.append(Vec2(bottom_right_x, bottom_y))
 
     return _dedupe_air_duct_points(left_side + right_side)
 

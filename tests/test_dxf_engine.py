@@ -1788,6 +1788,31 @@ def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
     assert abs(max(point.y for point in by_region["lower_outer"]) - lower_split) < 1e-6
 
 
+def test_air_duct_base_plate_end_cap_stays_near_real_tip_width():
+    component = [
+        Vec2(-5.0, 0.0),
+        Vec2(-42.0, 45.0),
+        Vec2(0.0, 100.0),
+        Vec2(42.0, 45.0),
+        Vec2(5.0, 0.0),
+    ]
+
+    plate = circle_generator._air_duct_base_plate_polygon(
+        [component],
+        margin=10.0,
+        radius=3.0,
+    )
+    top_y = max(point.y for point in plate)
+    bottom_y = min(point.y for point in plate)
+    top_points = [point for point in plate if abs(point.y - top_y) < 1e-6]
+    bottom_points = [point for point in plate if abs(point.y - bottom_y) < 1e-6]
+
+    assert len(top_points) == 2
+    assert len(bottom_points) == 2
+    assert max(point.x for point in top_points) - min(point.x for point in top_points) <= 20.0
+    assert max(point.x for point in bottom_points) - min(point.x for point in bottom_points) <= 20.0
+
+
 def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     records = []
     for index in range(48):
