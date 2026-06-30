@@ -71,6 +71,32 @@ def test_path_analyzer_chain():
     assert len(chain) == 4
 
 
+def test_multi_entity_closed_outline_samples_head_to_tail_when_entity_direction_differs():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    left = msp.add_lwpolyline([(0, 100), (-20, 50), (0, 0)], close=False)
+    bottom = msp.add_line((0, 0), (10, 0))
+    right = msp.add_lwpolyline([(10, 0), (30, 50), (10, 100)], close=False)
+    # This closing edge is intentionally stored in the opposite direction from
+    # the chain traversal needed after `right`.
+    top = msp.add_line((0, 100), (10, 100))
+
+    chain = path_analyzer.build_chain(doc, [left.dxf.handle])
+
+    assert set(chain) == {left.dxf.handle, bottom.dxf.handle, right.dxf.handle, top.dxf.handle}
+    assert path_analyzer.get_chain_info(doc, chain)["is_closed"]
+
+    segments = geometry_utils._build_segments(doc, chain)
+    assert len(segments) >= 4
+    for prev, current in zip(segments, segments[1:]):
+        prev_end = prev.evaluate(1.0)[0]
+        current_start = current.evaluate(0.0)[0]
+        assert (prev_end - current_start).magnitude < 1e-6
+    first_start = segments[0].evaluate(0.0)[0]
+    last_end = segments[-1].evaluate(1.0)[0]
+    assert (first_start - last_end).magnitude < 1e-6
+
+
 def test_circle_generator():
     doc = make_rect_doc()
     handles = [e.dxf.handle for e in doc.modelspace()]

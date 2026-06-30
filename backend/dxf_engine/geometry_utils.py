@@ -492,15 +492,15 @@ class SamplePoint:
 
 
 def _build_segments(doc, chain: List[str]) -> List["_Segment"]:
-    segments = []
+    groups = []
     for handle in chain:
         entity = doc.entitydb.get(handle)
         if entity is None:
             continue
         pts_data = _get_parametrization(entity)
         if pts_data:
-            segments.extend(pts_data)
-    return segments
+            groups.append(pts_data)
+    return _orient_segment_groups(groups)
 
 
 def _cumulative_lengths(segments: List["_Segment"]) -> List[float]:
@@ -866,6 +866,62 @@ class _Segment:
     length: float
     evaluate: Callable[[float], Tuple[Vec2, Vec2, Vec2]]
     smoothable: bool = True
+
+
+def _orient_segment_groups(groups: List[List[_Segment]]) -> List[_Segment]:
+    """Orient entity segment groups so adjacent entities connect head-to-tail."""
+    if not groups:
+        return []
+    if len(groups) == 1:
+        return groups[0]
+
+    oriented: List[List[_Segment]] = []
+    first = groups[0]
+    second_start, second_end = _segment_group_endpoints(groups[1])
+    first_start, first_end = _segment_group_endpoints(first)
+    if _nearest_distance(first_start, [second_start, second_end]) < _nearest_distance(first_end, [second_start, second_end]):
+        first = _reverse_segment_group(first)
+    oriented.append(first)
+
+    prev_end = _segment_group_endpoints(first)[1]
+    for group in groups[1:]:
+        start, end = _segment_group_endpoints(group)
+        if (end - prev_end).magnitude < (start - prev_end).magnitude:
+            group = _reverse_segment_group(group)
+        oriented.append(group)
+        prev_end = _segment_group_endpoints(group)[1]
+
+    return [segment for group in oriented for segment in group]
+
+
+def _segment_group_endpoints(group: List[_Segment]) -> Tuple[Vec2, Vec2]:
+    start, _, _ = group[0].evaluate(0.0)
+    end, _, _ = group[-1].evaluate(1.0)
+    return start, end
+
+
+def _nearest_distance(point: Vec2, candidates: List[Vec2]) -> float:
+    return min((point - candidate).magnitude for candidate in candidates)
+
+
+def _reverse_segment_group(group: List[_Segment]) -> List[_Segment]:
+    return [_reverse_segment(segment) for segment in reversed(group)]
+
+
+def _reverse_segment(segment: _Segment) -> _Segment:
+    def eval_reversed(t: float, segment=segment):
+        point, tangent, _ = segment.evaluate(1.0 - t)
+        reversed_tangent = Vec2(-tangent.x, -tangent.y)
+        normal = perpendicular(reversed_tangent, clockwise=False)
+        return point, reversed_tangent, normal
+
+    return _Segment(
+        handle=segment.handle,
+        segment_index=segment.segment_index,
+        length=segment.length,
+        evaluate=eval_reversed,
+        smoothable=segment.smoothable,
+    )
 
 
 def _get_parametrization(entity) -> List[_Segment]:

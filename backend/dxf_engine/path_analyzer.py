@@ -118,59 +118,105 @@ def _build_adjacency(doc) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
 def _order_chain(reachable: set, graph: Dict[str, List[str]],
                  handle_endpoints: Dict[str, List[str]], doc) -> List[str]:
     """
-    Order reachable handles into a path from one end to the other.
-    If closed, start anywhere and follow around.
+    Order reachable handles by walking endpoint nodes.
+
+    The old implementation followed the first unvisited handle-neighbor. That
+    works for very simple drawings, but it loses which endpoint a neighbor was
+    connected through. In multi-entity closed outlines a handle can be connected
+    at both ends, and choosing only by handle adjacency can make the chain jump
+    across the outline. Rebuilding the path as node(edge endpoint) -> edge ->
+    next node preserves the true head-to-tail order.
     """
     if not reachable:
         return []
+    if len(reachable) == 1:
+        return [next(iter(reachable))]
+
+    doc_order = {
+        entity.dxf.handle: index
+        for index, entity in enumerate(doc.modelspace())
+        if hasattr(entity.dxf, "handle")
+    }
+
+    def handle_sort_key(handle: str):
+        return (doc_order.get(handle, 10**9), handle)
+
+    node_edges: Dict[str, List[str]] = defaultdict(list)
+    for handle in reachable:
+        endpoints = handle_endpoints.get(handle, [])
+        if len(endpoints) < 2:
+            continue
+        for key in set(endpoints):
+            node_edges[key].append(handle)
+
+    # Handles without usable endpoints, such as circles, are standalone chains.
+    if not node_edges:
+        return sorted(reachable, key=handle_sort_key)
 
     remaining = set(reachable)
+    ordered: List[str] = []
 
-    # Find an endpoint handle (one with fewer than 2 connections within reachable)
-    start = None
-    for handle in reachable:
-        neighbors_in_set = [n for n in graph.get(handle, []) if n in remaining]
-        if len(neighbors_in_set) < 2:
-            start = handle
-            break
+    def active_degree(node: str) -> int:
+        return len([h for h in node_edges.get(node, []) if h in remaining])
 
-    if start is None:
-        # Closed loop: pick any
-        start = next(iter(remaining))
-
-    ordered = [start]
-    remaining.remove(start)
-
-    # Build helper to find connecting endpoint between two handles
-    def find_next(current: str, prev: Optional[str]) -> Optional[str]:
-        current_eps = handle_endpoints.get(current, [])
-        for neighbor in graph.get(current, []):
-            if neighbor not in remaining or neighbor == prev:
-                continue
-            neighbor_eps = handle_endpoints.get(neighbor, [])
-            # Check if they share an endpoint key
-            for k1 in current_eps:
-                if k1 in neighbor_eps:
-                    return neighbor
+    def other_endpoint(handle: str, current_node: str) -> Optional[str]:
+        endpoints = handle_endpoints.get(handle, [])
+        if len(endpoints) < 2:
+            return None
+        a, b = endpoints[0], endpoints[1]
+        if a == current_node:
+            return b
+        if b == current_node:
+            return a
         return None
 
-    prev = None
-    current = start
-    while True:
-        next_handle = find_next(current, prev)
-        if not next_handle:
+    def choose_start_node() -> Optional[str]:
+        open_nodes = [
+            node for node in node_edges
+            if active_degree(node) == 1
+        ]
+        if open_nodes:
+            return min(
+                open_nodes,
+                key=lambda node: min(handle_sort_key(h) for h in node_edges[node] if h in remaining),
+            )
+        active_nodes = [node for node in node_edges if active_degree(node) > 0]
+        if not active_nodes:
+            return None
+        return min(
+            active_nodes,
+            key=lambda node: min(handle_sort_key(h) for h in node_edges[node] if h in remaining),
+        )
+
+    def choose_next_handle(node: str) -> Optional[str]:
+        candidates = [h for h in node_edges.get(node, []) if h in remaining]
+        if not candidates:
+            return None
+        return min(candidates, key=handle_sort_key)
+
+    while remaining:
+        current_node = choose_start_node()
+        if current_node is None:
             break
-        ordered.append(next_handle)
-        remaining.remove(next_handle)
-        prev = current
-        current = next_handle
 
-    # If there are remaining disconnected pieces (shouldn't happen with BFS), append them
-    # but log a warning implicitly by keeping them out of order.
-    # For our use case we only expect one connected component.
-    ordered.extend(sorted(remaining))
+        while remaining:
+            next_handle = choose_next_handle(current_node)
+            if next_handle is None:
+                break
 
-    # For LWPOLYLINE entities that are themselves closed, we treat them as a single segment.
+            ordered.append(next_handle)
+            remaining.remove(next_handle)
+
+            next_node = other_endpoint(next_handle, current_node)
+            if next_node is None:
+                break
+            current_node = next_node
+
+    # Preserve any unusual entities that were reachable but did not participate
+    # in endpoint traversal.
+    if remaining:
+        ordered.extend(sorted(remaining, key=handle_sort_key))
+
     return ordered
 
 
