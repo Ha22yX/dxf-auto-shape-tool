@@ -11,7 +11,12 @@ import ezdxf
 from ezdxf.math import Vec2
 
 from backend.state import CircleParams
-from backend.config import GENERATED_LAYER, POINT_TOLERANCE, AIR_DUCT_LAYER
+from backend.config import (
+    GENERATED_LAYER,
+    POINT_TOLERANCE,
+    AIR_DUCT_LAYER,
+    AIR_DUCT_BASE_PLATE_LAYER,
+)
 from backend.dxf_engine import geometry_utils as geom
 
 
@@ -1937,6 +1942,206 @@ def _air_duct_contours(doc, chain, params, placements, kept_items):
     return contours
 
 
+def _air_duct_component_polygons_for_region(records, total_length, params, region):
+    if len(records) < 2:
+        return []
+    split_disconnected = region.endswith("_inner")
+    components = _split_air_duct_components(records, total_length, split_disconnected)
+    endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
+    endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
+    return [
+        polygon
+        for polygon in (
+            _air_duct_component_polygon(component, endpoint_margin=endpoint_margin)
+            for component in components
+        )
+        if len(polygon) >= 3
+    ]
+
+
+def _smooth_base_plate_side_x(values, is_left_side):
+    if len(values) < 5:
+        return values
+
+    original = list(values)
+    smoothed = list(values)
+    for _ in range(2):
+        next_values = [smoothed[0]]
+        for index in range(1, len(smoothed) - 1):
+            candidate = (
+                smoothed[index - 1] * 0.25
+                + smoothed[index] * 0.5
+                + smoothed[index + 1] * 0.25
+            )
+            # Smoothing must never shrink the plate inward, otherwise a local
+            # dent can stop covering a duct edge. Left sides only move left,
+            # right sides only move right.
+            if is_left_side:
+                candidate = min(candidate, original[index])
+            else:
+                candidate = max(candidate, original[index])
+            next_values.append(candidate)
+        next_values.append(smoothed[-1])
+        smoothed = next_values
+    return smoothed
+
+
+def _air_duct_base_plate_polygon(component_polygons, margin, radius):
+    polygons = [
+        _dedupe_air_duct_points(polygon)
+        for polygon in component_polygons
+        if len(_dedupe_air_duct_points(polygon)) >= 3
+    ]
+    if not polygons:
+        return []
+
+    margin = max(0.0, float(margin or 0.0))
+    all_points = [point for polygon in polygons for point in polygon]
+    min_y = min(point.y for point in all_points)
+    max_y = max(point.y for point in all_points)
+    span_y = max_y - min_y
+    if span_y <= POINT_TOLERANCE:
+        min_x = min(point.x for point in all_points) - margin
+        max_x = max(point.x for point in all_points) + margin
+        return [
+            Vec2(min_x, min_y - margin),
+            Vec2(max_x, min_y - margin),
+            Vec2(max_x, max_y + margin),
+            Vec2(min_x, max_y + margin),
+        ]
+
+    sample_step = max(max(radius, 0.0) * 2.0, margin * 0.35, span_y / 140.0, 1.0)
+    sample_count = max(10, min(180, int(math.ceil(span_y / sample_step)) + 1))
+    samples = []
+    for index in range(sample_count):
+        y = min_y + span_y * index / max(1, sample_count - 1)
+        extents = _horizontal_extents_at_y(polygons, y)
+        if not extents:
+            continue
+        left_x, right_x = extents
+        if right_x - left_x <= POINT_TOLERANCE:
+            continue
+        samples.append((y, left_x - margin, right_x + margin))
+
+    if len(samples) < 2:
+        min_x = min(point.x for point in all_points) - margin
+        max_x = max(point.x for point in all_points) + margin
+        return [
+            Vec2(min_x, min_y - margin),
+            Vec2(max_x, min_y - margin),
+            Vec2(max_x, max_y + margin),
+            Vec2(min_x, max_y + margin),
+        ]
+
+    ys = [sample[0] for sample in samples]
+    left_xs = _smooth_base_plate_side_x(
+        [sample[1] for sample in samples],
+        is_left_side=True,
+    )
+    right_xs = _smooth_base_plate_side_x(
+        [sample[2] for sample in samples],
+        is_left_side=False,
+    )
+    bottom_y = min_y - margin
+    top_y = max_y + margin
+
+    left_side = [Vec2(left_xs[0], bottom_y)]
+    left_side.extend(Vec2(x, y) for y, x in zip(ys, left_xs))
+    left_side.append(Vec2(left_xs[-1], top_y))
+
+    right_side = [Vec2(right_xs[-1], top_y)]
+    right_side.extend(Vec2(x, y) for y, x in zip(reversed(ys), reversed(right_xs)))
+    right_side.append(Vec2(right_xs[0], bottom_y))
+
+    return _dedupe_air_duct_points(left_side + right_side)
+
+
+def _air_duct_base_plate_region_contours(records, total_length, params, region):
+    component_polygons = _air_duct_component_polygons_for_region(
+        records,
+        total_length,
+        params,
+        region,
+    )
+    polygon = _air_duct_base_plate_polygon(
+        component_polygons,
+        getattr(params, "air_duct_base_plate_margin", 0.0),
+        getattr(params, "circle_radius", 0.0),
+    )
+    if len(polygon) < 3:
+        return []
+    return [{"role": "base_plate", "points": polygon}]
+
+
+def _air_duct_group_records(doc, chain, params, placements, kept_items):
+    if not getattr(params, "air_duct_enabled", True):
+        return {}, 0.0
+    if not placements or not kept_items:
+        return {}, 0.0
+
+    axis = _chain_axis(doc, chain)
+    total_length = geom.chain_length(doc, chain)
+    kept_by_placement = _items_by_placement(kept_items)
+    grouped = {}
+    for placement_index, placement in enumerate(placements):
+        if not kept_by_placement.get(placement_index, []):
+            continue
+        record = _air_duct_record(placement, params.circle_radius, None)
+        if not record:
+            continue
+        region = _air_duct_region_key(placement, axis, params)
+        grouped.setdefault(region, []).append(record)
+    return grouped, total_length
+
+
+def _ordered_air_duct_regions(grouped):
+    region_order = [
+        "upper_outer",
+        "upper_inner",
+        "upper",
+        "all",
+        "lower_inner",
+        "lower_outer",
+        "lower",
+    ]
+    return sorted(
+        grouped,
+        key=lambda key: (
+            region_order.index(key) if key in region_order else len(region_order),
+            key,
+        ),
+    )
+
+
+def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
+    grouped, total_length = _air_duct_group_records(
+        doc,
+        chain,
+        params,
+        placements,
+        kept_items,
+    )
+    if not grouped:
+        return []
+
+    offset = _air_duct_template_offset(doc, chain)
+    contours = []
+    for region in _ordered_air_duct_regions(grouped):
+        for contour in _air_duct_base_plate_region_contours(
+            grouped[region],
+            total_length,
+            params,
+            region,
+        ):
+            shifted = [point + offset for point in contour["points"]]
+            contours.append({
+                "region": region,
+                "role": contour["role"],
+                "points": shifted,
+            })
+    return contours
+
+
 def _contour_svg_path(points, bounds, scale):
     if not points:
         return ""
@@ -1963,6 +2168,25 @@ def _add_air_duct_entities(msp, doc, contours):
             [(point.x, point.y) for point in points],
             close=True,
             dxfattribs={"layer": AIR_DUCT_LAYER},
+        )
+        handles.append(polyline.dxf.handle)
+    return handles
+
+
+def _add_air_duct_base_plate_entities(msp, doc, contours):
+    if not contours:
+        return []
+    if AIR_DUCT_BASE_PLATE_LAYER not in doc.layers:
+        doc.layers.add(AIR_DUCT_BASE_PLATE_LAYER)
+    handles = []
+    for contour in contours:
+        points = contour.get("points") or []
+        if len(points) < 3:
+            continue
+        polyline = msp.add_lwpolyline(
+            [(point.x, point.y) for point in points],
+            close=True,
+            dxfattribs={"layer": AIR_DUCT_BASE_PLATE_LAYER},
         )
         handles.append(polyline.dxf.handle)
     return handles
@@ -2279,6 +2503,13 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     kept_by_placement = _items_by_placement(kept_items)
     axis = _chain_axis(doc, chain)
     air_duct_contours = _air_duct_contours(doc, chain, params, placements, kept_items)
+    air_duct_base_plate_contours = _air_duct_base_plate_contours(
+        doc,
+        chain,
+        params,
+        placements,
+        kept_items,
+    )
     air_duct_template_offset = _air_duct_template_offset(doc, chain)
 
     circles = []
@@ -2286,7 +2517,16 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
     rays = []
     basis = []
     capsules = []
+    air_duct_base_plates = []
     air_ducts = []
+    for contour in air_duct_base_plate_contours:
+        d = _contour_svg_path(contour["points"], bounds, scale)
+        if d:
+            air_duct_base_plates.append({
+                "d": d,
+                "region": contour["region"],
+                "role": contour.get("role", "base_plate"),
+            })
     for contour in air_duct_contours:
         d = _contour_svg_path(contour["points"], bounds, scale)
         if d:
@@ -2349,6 +2589,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "removed_circles": removed_circles,
         "rays": rays,
         "capsules": capsules,
+        "air_duct_base_plates": air_duct_base_plates,
         "air_ducts": air_ducts,
         "air_duct_template_offset": {
             "x": air_duct_template_offset.x * scale,
@@ -2364,6 +2605,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         "symmetry_snap_point": _symmetry_snap_point_overlay(doc, chain, bounds, scale),
         "generated_count": len(circles),
         "removed_count": len(removed_circles),
+        "air_duct_base_plate_count": len(air_duct_base_plates),
         "air_duct_count": len(air_ducts),
     }
 
@@ -2416,6 +2658,13 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     kept_by_placement = _items_by_placement(kept_items)
     axis = _chain_axis(doc, chain)
     air_duct_contours = _air_duct_contours(doc, chain, params, placements, kept_items)
+    air_duct_base_plate_contours = _air_duct_base_plate_contours(
+        doc,
+        chain,
+        params,
+        placements,
+        kept_items,
+    )
 
     msp = doc.modelspace()
     if GENERATED_LAYER not in doc.layers:
@@ -2441,6 +2690,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
         )
         if capsule:
             _add_capsule_entities(msp, capsule)
+    _add_air_duct_base_plate_entities(msp, doc, air_duct_base_plate_contours)
     _add_air_duct_entities(msp, doc, air_duct_contours)
 
     return circle_handles, []

@@ -67,6 +67,7 @@ PARAM_LOG_LABELS = {
     "capsule_axis_gap_below_distance": "水平轴下方无长条距离",
     "air_duct_enabled": "导风槽显示/导出",
     "air_duct_inlet_distance": "导风槽横向吸风口距离",
+    "air_duct_base_plate_margin": "导风槽底板外扩距离",
     "top_gap_distance": "顶部间隔",
     "ray_count": "射线数量",
     "ray_direction": "射线方向",

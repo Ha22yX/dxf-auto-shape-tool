@@ -81,6 +81,14 @@ class ParameterPanel {
                 step: 0.5,
                 decimals: 1,
             },
+            air_duct_base_plate_margin: {
+                min: 0,
+                max: 99999,
+                sliderMin: 0,
+                sliderMax: 200,
+                step: 0.5,
+                decimals: 1,
+            },
             top_gap_distance: {
                 min: 0,
                 max: 99999,
@@ -309,6 +317,10 @@ class ParameterPanel {
             air_duct_inlet_distance: this._normalizeInputValue(
                 "air_duct_inlet_distance",
                 parse("air_duct_inlet_distance", 20),
+            ),
+            air_duct_base_plate_margin: this._normalizeInputValue(
+                "air_duct_base_plate_margin",
+                parse("air_duct_base_plate_margin", 20),
             ),
             top_gap_distance: this._normalizeInputValue(
                 "top_gap_distance",

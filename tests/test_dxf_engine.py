@@ -11,7 +11,7 @@ import ezdxf
 from ezdxf.math import Vec2
 from fastapi import UploadFile
 from backend.app import upload_dxf, download_dxf, _apply_selection, _select_handle
-from backend.config import AIR_DUCT_LAYER, DEFAULT_PARAMS
+from backend.config import AIR_DUCT_LAYER, AIR_DUCT_BASE_PLATE_LAYER, DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
 
@@ -1128,7 +1128,12 @@ def test_preview_includes_air_duct_templates():
     )
 
     assert preview["air_ducts"]
+    assert preview["air_duct_base_plates"]
     assert all(duct["d"].startswith("M ") and duct["d"].endswith("Z") for duct in preview["air_ducts"])
+    assert all(
+        plate["d"].startswith("M ") and plate["d"].endswith("Z")
+        for plate in preview["air_duct_base_plates"]
+    )
     assert len(preview["air_ducts"]) == len(
         {(duct["region"], duct.get("role")) for duct in preview["air_ducts"]}
     )
@@ -1661,6 +1666,84 @@ def test_air_duct_component_extends_endpoints_to_cover_end_hole_radius():
     assert max(xs) >= 105.0 - 1e-6
 
 
+def test_air_duct_base_plate_ignores_inlet_and_has_flat_ends():
+    records = []
+    for index, (x, near_y, far_y) in enumerate([
+        (0.0, 0.0, 30.0),
+        (30.0, 6.0, 36.0),
+        (60.0, 4.0, 34.0),
+        (90.0, 0.0, 30.0),
+    ]):
+        near = Vec2(x, near_y)
+        far = Vec2(x, far_y)
+        records.append({
+            "near": near,
+            "far": far,
+            "near_center": near,
+            "far_center": far,
+            "circle_centers": [near + (far - near) * 0.5],
+            "radius": 2.0,
+            "width": (far - near).magnitude,
+            "source_distance": float(index * 10),
+            "source_point": near,
+        })
+
+    params = CircleParams(
+        circle_radius=2.0,
+        air_duct_inlet_distance=4.0,
+        air_duct_base_plate_margin=8.0,
+    )
+    shifted_params = CircleParams(
+        circle_radius=2.0,
+        air_duct_inlet_distance=24.0,
+        air_duct_base_plate_margin=8.0,
+    )
+
+    contours = circle_generator._air_duct_base_plate_region_contours(
+        records,
+        total_length=120.0,
+        params=params,
+        region="upper",
+    )
+    shifted_contours = circle_generator._air_duct_base_plate_region_contours(
+        records,
+        total_length=120.0,
+        params=shifted_params,
+        region="upper",
+    )
+
+    assert len(contours) == 1
+    assert len(shifted_contours) == 1
+    points = contours[0]["points"]
+    shifted_points = shifted_contours[0]["points"]
+    assert len(points) == len(shifted_points)
+    assert all(
+        point.isclose(shifted)
+        for point, shifted in zip(points, shifted_points)
+    )
+
+    component_polygons = circle_generator._air_duct_component_polygons_for_region(
+        records,
+        total_length=120.0,
+        params=params,
+        region="upper",
+    )
+    component_points = [point for polygon in component_polygons for point in polygon]
+    expected_bottom = min(point.y for point in component_points) - params.air_duct_base_plate_margin
+    expected_top = max(point.y for point in component_points) + params.air_duct_base_plate_margin
+    min_y = min(point.y for point in points)
+    max_y = max(point.y for point in points)
+
+    assert abs(min_y - expected_bottom) < 1e-6
+    assert abs(max_y - expected_top) < 1e-6
+    assert sum(1 for point in points if abs(point.y - min_y) < 1e-6) >= 2
+    assert sum(1 for point in points if abs(point.y - max_y) < 1e-6) >= 2
+    assert all(
+        air_duct_point_inside_or_on(point, points)
+        for point in component_points
+    )
+
+
 def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     records = []
     for index in range(48):
@@ -1834,3 +1917,14 @@ def test_generate_circles_exports_air_duct_layer():
     ]
     assert air_duct_entities
     assert all(entity.dxftype() == "LWPOLYLINE" and entity.closed for entity in air_duct_entities)
+
+    base_plate_entities = [
+        entity
+        for entity in doc.modelspace()
+        if entity.dxf.layer == AIR_DUCT_BASE_PLATE_LAYER
+    ]
+    assert base_plate_entities
+    assert all(
+        entity.dxftype() == "LWPOLYLINE" and entity.closed
+        for entity in base_plate_entities
+    )

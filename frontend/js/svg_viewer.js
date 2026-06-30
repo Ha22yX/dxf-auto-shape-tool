@@ -177,11 +177,20 @@ class SvgViewer {
 
     _generatedGeometryMarkup(geometry) {
         const parts = [];
+        const airDuctBasePlates = geometry.air_duct_base_plates || [];
         const airDucts = geometry.air_ducts || [];
-        if (airDucts.length) {
+        if (airDuctBasePlates.length || airDucts.length) {
             const transform = this._airDuctCompareTransform(geometry);
             const attrs = transform ? ` transform="${transform}"` : "";
             parts.push(`<g class="air-duct-layer"${attrs}>`);
+            for (const plate of airDuctBasePlates) {
+                if (!plate || !plate.d) continue;
+                parts.push(
+                    `<path d="${this._escapeAttr(plate.d)}" fill="none" stroke="#A7F3D0" `
+                    + `stroke-width="1.5" stroke-opacity="0.78" stroke-linecap="round" `
+                    + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
+                );
+            }
             for (const duct of airDucts) {
                 if (!duct || !duct.d) continue;
                 parts.push(
