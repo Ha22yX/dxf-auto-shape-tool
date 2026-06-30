@@ -97,6 +97,31 @@ def test_multi_entity_closed_outline_samples_head_to_tail_when_entity_direction_
     assert (first_start - last_end).magnitude < 1e-6
 
 
+def test_closed_multi_entity_outline_normals_point_to_same_side_as_whole_shape():
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    left = msp.add_line((0, 100), (0, 0))
+    bottom = msp.add_line((0, 0), (10, 0))
+    right = msp.add_line((10, 0), (10, 100))
+    top = msp.add_line((0, 100), (10, 100))
+    chain = path_analyzer.build_chain(doc, [left.dxf.handle])
+    total = geometry_utils.chain_length(doc, chain)
+    samples = geometry_utils.sample_chain_at_distances(
+        doc,
+        chain,
+        [50.0, 105.0, 160.0, 215.0],
+        smooth_tangents=False,
+        total=total,
+    )
+    params = CircleParams(ray_direction="inward", top_gap_distance=0.0)
+
+    normals = circle_generator._oriented_normals(doc, chain, samples, params, closed=True)
+
+    center = geometry_utils.chain_centroid(samples)
+    for sample, normal in zip(samples, normals):
+        assert normal.dot(center - sample.point) > 0
+
+
 def test_circle_generator():
     doc = make_rect_doc()
     handles = [e.dxf.handle for e in doc.modelspace()]

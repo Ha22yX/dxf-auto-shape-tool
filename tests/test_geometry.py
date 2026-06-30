@@ -76,7 +76,7 @@ def test_orient_normals_to_center():
 
 
 def test_orient_normals_for_closed_chain():
-    # CCW square with outward raw (left-of-tangent) normals.
+    # CCW square with inward raw (left-of-tangent) normals.
     samples = [
         geom.SamplePoint(Vec2(0, 0), Vec2(0, 1), Vec2(0, 1), "A"),
         geom.SamplePoint(Vec2(10, 0), Vec2(-1, 0), Vec2(-1, 0), "B"),
@@ -84,16 +84,16 @@ def test_orient_normals_for_closed_chain():
         geom.SamplePoint(Vec2(0, 10), Vec2(1, 0), Vec2(1, 0), "D"),
     ]
     inward = geom.orient_normals_for_closed_chain(samples, inward=True)
-    assert inward[0].isclose(Vec2(0, -1))
-    assert inward[1].isclose(Vec2(1, 0))
-    assert inward[2].isclose(Vec2(0, 1))
-    assert inward[3].isclose(Vec2(-1, 0))
+    assert inward[0].isclose(Vec2(0, 1))
+    assert inward[1].isclose(Vec2(-1, 0))
+    assert inward[2].isclose(Vec2(0, -1))
+    assert inward[3].isclose(Vec2(1, 0))
 
     outward = geom.orient_normals_for_closed_chain(samples, inward=False)
-    assert outward[0].isclose(Vec2(0, 1))
-    assert outward[1].isclose(Vec2(-1, 0))
-    assert outward[2].isclose(Vec2(0, -1))
-    assert outward[3].isclose(Vec2(1, 0))
+    assert outward[0].isclose(Vec2(0, -1))
+    assert outward[1].isclose(Vec2(1, 0))
+    assert outward[2].isclose(Vec2(0, 1))
+    assert outward[3].isclose(Vec2(-1, 0))
 
 
 def test_sample_chain_with_arc():

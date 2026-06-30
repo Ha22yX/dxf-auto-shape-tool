@@ -1200,27 +1200,34 @@ def orient_normals_to_center(samples: List[SamplePoint]) -> List[Vec2]:
 
 def orient_normals_for_closed_chain(samples: List[SamplePoint], inward: bool = True) -> List[Vec2]:
     """
-    Orient normals for a closed chain based on its signed area.
+    Orient normals for a closed chain as one continuous outline.
 
-    All raw normals are assumed to be the left-of-tangent normal. For a
-    counter-clockwise chain (positive signed area) the left normal points
-    outward; for a clockwise chain it points inward. This function flips the
-    whole set uniformly so they all point inward or outward as requested.
+    Multi-entity closed outlines often contain pieces stored in opposite DXF
+    directions. For closed chains, trust each sample's local tangent/normal
+    after chain orientation, then choose the side that points toward/away from
+    the outline center. This keeps a split bottom edge and side curves behaving
+    as one complete surfboard outline.
 
     Returns a new list of normals.
     """
     if not samples:
         return []
 
-    points = [s.point for s in samples]
-    signed_area = polygon_signed_area(points)
+    center = chain_centroid(samples)
+    normals = []
+    for sample in samples:
+        normal = sample.normal
+        if normal.magnitude <= 1e-9:
+            normal = perpendicular(sample.tangent, clockwise=False)
+        to_center = center - sample.point
+        dot = normal.dot(to_center)
 
-    # For a CCW chain, left normals point outward.
-    left_normal_is_outward = signed_area >= 0
-    want_outward = not inward
+        if inward:
+            if dot < 0:
+                normal = -normal
+        else:
+            if dot > 0:
+                normal = -normal
+        normals.append(normal)
 
-    flip = (left_normal_is_outward and not want_outward) or (not left_normal_is_outward and want_outward)
-
-    if flip:
-        return [-s.normal for s in samples]
-    return [s.normal for s in samples]
+    return normals
