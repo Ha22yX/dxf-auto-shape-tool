@@ -1372,7 +1372,14 @@ def _air_duct_inlet_points(records, params, region, polygons=None):
     ]
 
 
-def _nudge_inlet_points_for_union(points):
+def _inlet_union_join_margin(params):
+    radius = max(0.0, getattr(params, "circle_radius", 0.0))
+    if radius <= 0:
+        return POINT_TOLERANCE * 20.0
+    return max(POINT_TOLERANCE * 20.0, min(radius * 0.02, 0.05))
+
+
+def _nudge_inlet_points_for_union(points, join_margin=0.0):
     """Move inlet side edges microscopically through the duct before union.
 
     The inlet is intentionally clamped to the duct boundary so it does not
@@ -1391,7 +1398,8 @@ def _nudge_inlet_points_for_union(points):
     if width <= POINT_TOLERANCE:
         return points
 
-    amount = min(max(POINT_TOLERANCE * 10.0, width * 1e-6), width * 0.001)
+    amount = max(float(join_margin or 0.0), POINT_TOLERANCE * 20.0, width * 1e-6)
+    amount = min(amount, max(POINT_TOLERANCE * 20.0, width * 0.0005), 0.05)
     center_x = sum(point.x for point in points) / len(points)
     nudged = []
     for point in points:
@@ -1625,38 +1633,23 @@ def _air_duct_component_polygon(records, endpoint_margin=0.0):
 
 
 def _single_component_air_duct_slot_loops(records, params, region, endpoint_margin=0.0):
-    outer_curve, inner_curve = _air_duct_component_curves(
+    polygon = _air_duct_component_polygon(
         records,
         endpoint_margin=endpoint_margin,
     )
-    if len(outer_curve) < 3 or len(inner_curve) < 3:
-        return []
-
-    polygon = _dedupe_air_duct_points(outer_curve + list(reversed(inner_curve)))
     if len(polygon) < 3:
         return []
 
     inlet = _air_duct_inlet_points(records, params, region, [polygon])
     if len(inlet) < 4:
-        return []
+        loops = [polygon]
+    else:
+        union_inlet = _nudge_inlet_points_for_union(
+            inlet,
+            _inlet_union_join_margin(params),
+        )
+        loops = _union_polygons_boundary([polygon, union_inlet]) or [polygon]
 
-    inlet_ys = sorted({round(point.y, 9) for point in inlet})
-    if len(inlet_ys) < 2:
-        return []
-
-    if not (region.startswith("upper") or region.startswith("lower")):
-        return []
-
-    # Keep the main duct strip intact. The horizontal inlet is not a region
-    # boundary; it is only an opening that joins the left and right duct sides.
-    # Clipping the duct curves at the inlet makes the whole guide appear cut in
-    # half, which is exactly the visual failure this function avoids.
-    loops = [
-        _dedupe_air_duct_points(outer_curve),
-        _dedupe_air_duct_points(inner_curve),
-    ]
-    if len(inlet) >= 4:
-        loops.append(_dedupe_air_duct_points(inlet))
     return [
         loop
         for loop in loops
@@ -1741,8 +1734,9 @@ def _air_duct_region_contours(records, total_length, params, region):
 
     inlet_points = _air_duct_inlet_points(ordered, params, region, component_polygons)
     if inlet_points:
+        join_margin = _inlet_union_join_margin(params)
         if len(records) <= 20:
-            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
+            union_inlet_points = _nudge_inlet_points_for_union(inlet_points, join_margin)
             if len(component_polygons) == 1:
                 loops = _union_polygon_with_rect_boundary(
                     component_polygons[0],
@@ -1768,7 +1762,7 @@ def _air_duct_region_contours(records, total_length, params, region):
         # horizontal inlet into it. Returning all union boundary loops preserves
         # the groove's inner walls; returning only the largest loop turns the
         # groove into a filled "lake".
-        union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
+        union_inlet_points = _nudge_inlet_points_for_union(inlet_points, join_margin)
         if len(component_polygons) > 1:
             loops = _union_polygons_boundary(component_polygons + [union_inlet_points])
             if not loops:

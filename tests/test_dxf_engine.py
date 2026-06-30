@@ -1525,6 +1525,10 @@ def test_air_duct_inlet_tangent_to_side_ducts_unions_as_one_outline():
     points = contours[0]["points"]
     assert min(point.x for point in points) < 1900
     assert max(point.x for point in points) > 2550
+    raw_min_x = min(point.x for record in records for point in (record["near"], record["far"]))
+    raw_max_x = max(point.x for record in records for point in (record["near"], record["far"]))
+    assert min(point.x for point in points) >= raw_min_x - 0.1
+    assert max(point.x for point in points) <= raw_max_x + 0.1
 
 
 def test_air_duct_outline_contains_all_circle_extent_points():
@@ -1655,7 +1659,7 @@ def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     assert len(contours[0]["points"]) > len(records)
 
 
-def test_air_duct_end_cap_keeps_outer_and_inner_slot_edges():
+def test_air_duct_end_cap_integrates_inlet_without_standalone_rectangle():
     records = []
     for index in range(41):
         t = index / 40.0
@@ -1683,15 +1687,21 @@ def test_air_duct_end_cap_keeps_outer_and_inner_slot_edges():
         region="upper_outer",
     )
 
-    assert len(contours) >= 2
+    assert len(contours) == 2
     assert all(contour["role"].startswith("outline") for contour in contours)
+    assert {
+        1 if circle_generator._polygon_signed_area(contour["points"]) > 0 else -1
+        for contour in contours
+    } == {-1, 1}
     assert any(
         min(point.y for point in contour["points"]) <= 41.0
         and max(point.y for point in contour["points"]) >= 130.0
         for contour in contours
     )
-    assert any(
-        10.0 <= min(point.y for point in contour["points"]) <= 25.0
+    assert all(len(contour["points"]) > 8 for contour in contours)
+    assert not any(
+        len(contour["points"]) <= 5
+        and 10.0 <= min(point.y for point in contour["points"]) <= 25.0
         and 45.0 <= max(point.y for point in contour["points"]) <= 60.0
         for contour in contours
     )
