@@ -56,6 +56,44 @@ def _service_log(message: str):
     print(f"[DXF工具] {message}", flush=True)
 
 
+PARAM_LOG_LABELS = {
+    "circle_radius": "圆圈半径",
+    "circles_per_ray": "每射线圆数",
+    "circle_spacing": "圆间距",
+    "ray_offset": "射线整体偏移",
+    "capsule_start_distance": "长条起点距离",
+    "capsule_clearance_distance": "胶囊安全间距",
+    "capsule_axis_gap_above_distance": "水平轴上方无长条距离",
+    "capsule_axis_gap_below_distance": "水平轴下方无长条距离",
+    "top_gap_distance": "顶部间隔",
+    "ray_count": "射线数量",
+    "ray_direction": "射线方向",
+    "dedupe_closed_rays": "闭合端点射线去重",
+}
+
+
+def _format_param_value(value):
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
+
+
+def _changed_param_log(old_params: dict, new_params: dict) -> str:
+    changes = []
+    for key, label in PARAM_LOG_LABELS.items():
+        old_value = old_params.get(key)
+        new_value = new_params.get(key)
+        if isinstance(old_value, (int, float)) and isinstance(new_value, (int, float)):
+            if abs(float(old_value) - float(new_value)) < 1e-9:
+                continue
+        elif old_value == new_value:
+            continue
+        changes.append(
+            f"{label}: {_format_param_value(old_value)} -> {_format_param_value(new_value)}"
+        )
+    return "，".join(changes)
+
+
 @app.get("/")
 async def root():
     index_file = frontend_dir / "index.html"
@@ -221,14 +259,12 @@ async def update_params(session_id: str, data: dict):
     if not state:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    old_params = state.params.to_dict()
     state.params = CircleParams.from_dict(data)
+    param_changes = _changed_param_log(old_params, state.params.to_dict())
     regenerate(state)
-    _service_log(
-        f"更新参数：session={session_id[:8]}，射线数量={state.params.ray_count}，"
-        f"圆半径={state.params.circle_radius}，每射线圆数={state.params.circles_per_ray}，"
-        f"顶部间隔={state.params.top_gap_distance}，长条起点距离={state.params.capsule_start_distance}，"
-        f"胶囊安全间距={state.params.capsule_clearance_distance}"
-    )
+    if param_changes:
+        _service_log(f"更新参数：session={session_id[:8]}，{param_changes}")
 
     return {
         "params": state.params.to_dict(),
@@ -354,14 +390,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             elif msg_type == "params_change":
                 seq = data.get("seq", None)
+                old_params = state.params.to_dict()
                 state.params = CircleParams.from_dict(data.get("params", {}))
+                param_changes = _changed_param_log(old_params, state.params.to_dict())
                 regenerate(state)
-                _service_log(
-                    f"更新参数：session={session_id[:8]}，seq={seq}，射线数量={state.params.ray_count}，"
-                    f"圆半径={state.params.circle_radius}，每射线圆数={state.params.circles_per_ray}，"
-                    f"顶部间隔={state.params.top_gap_distance}，长条起点距离={state.params.capsule_start_distance}，"
-                    f"胶囊安全间距={state.params.capsule_clearance_distance}"
-                )
+                if param_changes:
+                    _service_log(f"更新参数：session={session_id[:8]}，seq={seq}，{param_changes}")
                 extra = {"params_seq": seq} if seq is not None else {}
                 await websocket.send_json(_preview_payload(state, **extra))
 
