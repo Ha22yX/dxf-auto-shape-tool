@@ -1744,6 +1744,50 @@ def test_air_duct_base_plate_ignores_inlet_and_has_flat_ends():
     )
 
 
+def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=36,
+        top_gap_distance=0.0,
+        capsule_axis_gap_above_distance=18.0,
+        capsule_axis_gap_below_distance=18.0,
+        air_duct_enabled=True,
+        air_duct_base_plate_margin=8.0,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    kept_items, _ = circle_generator._overlap_pruned_circle_items(
+        doc,
+        handles,
+        params,
+        placements,
+    )
+
+    contours = circle_generator._air_duct_base_plate_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    by_region = {contour["region"]: contour["points"] for contour in contours}
+    axis_y = circle_generator._chain_axis(doc, handles)["center"].y
+    upper_split = axis_y + params.capsule_axis_gap_above_distance
+    lower_split = axis_y - params.capsule_axis_gap_below_distance
+
+    assert {"upper_outer", "upper_inner", "lower_inner", "lower_outer"} <= set(by_region)
+    assert abs(min(point.y for point in by_region["upper_outer"]) - upper_split) < 1e-6
+    assert abs(max(point.y for point in by_region["upper_inner"]) - upper_split) < 1e-6
+    assert abs(min(point.y for point in by_region["upper_inner"]) - axis_y) < 1e-6
+    assert abs(max(point.y for point in by_region["lower_inner"]) - axis_y) < 1e-6
+    assert abs(min(point.y for point in by_region["lower_inner"]) - lower_split) < 1e-6
+    assert abs(max(point.y for point in by_region["lower_outer"]) - lower_split) < 1e-6
+
+
 def test_dense_air_duct_region_outputs_single_merged_slot_outline():
     records = []
     for index in range(48):

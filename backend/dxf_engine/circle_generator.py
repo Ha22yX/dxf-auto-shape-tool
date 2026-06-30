@@ -1986,7 +1986,43 @@ def _smooth_base_plate_side_x(values, is_left_side):
     return smoothed
 
 
-def _air_duct_base_plate_polygon(component_polygons, margin, radius):
+def _base_plate_stable_end_index(left_xs, right_xs, radius, margin, from_start):
+    widths = [
+        max(0.0, right - left)
+        for left, right in zip(left_xs, right_xs)
+    ]
+    if len(widths) < 4:
+        return 0 if from_start else len(widths) - 1
+
+    max_width = max(widths)
+    if max_width <= POINT_TOLERANCE:
+        return 0 if from_start else len(widths) - 1
+
+    # Rounded surfboard noses/tails collapse to a very narrow scan width at the
+    # last sample. Using that width for a flat base-plate end produces the
+    # small square tab the user sees. Pick a nearby stable width instead.
+    threshold = max(max_width * 0.18, max(0.0, radius) * 3.0, margin * 0.8)
+    search_count = max(3, min(len(widths), int(math.ceil(len(widths) * 0.28))))
+    if from_start:
+        indexes = range(search_count)
+        fallback = 0
+    else:
+        indexes = range(len(widths) - 1, len(widths) - search_count - 1, -1)
+        fallback = len(widths) - 1
+
+    for index in indexes:
+        if widths[index] >= threshold:
+            return index
+    return fallback
+
+
+def _air_duct_base_plate_polygon(
+    component_polygons,
+    margin,
+    radius,
+    lower_flat_y=None,
+    upper_flat_y=None,
+):
     polygons = [
         _dedupe_air_duct_points(polygon)
         for polygon in component_polygons
@@ -1999,22 +2035,33 @@ def _air_duct_base_plate_polygon(component_polygons, margin, radius):
     all_points = [point for polygon in polygons for point in polygon]
     min_y = min(point.y for point in all_points)
     max_y = max(point.y for point in all_points)
-    span_y = max_y - min_y
+    scan_min_y = min_y
+    scan_max_y = max_y
+    if lower_flat_y is not None:
+        scan_min_y = max(scan_min_y, float(lower_flat_y))
+    if upper_flat_y is not None:
+        scan_max_y = min(scan_max_y, float(upper_flat_y))
+    span_y = scan_max_y - scan_min_y
     if span_y <= POINT_TOLERANCE:
         min_x = min(point.x for point in all_points) - margin
         max_x = max(point.x for point in all_points) + margin
+        bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
+        top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
+        if top_y - bottom_y <= POINT_TOLERANCE:
+            bottom_y = min_y - margin
+            top_y = max_y + margin
         return [
-            Vec2(min_x, min_y - margin),
-            Vec2(max_x, min_y - margin),
-            Vec2(max_x, max_y + margin),
-            Vec2(min_x, max_y + margin),
+            Vec2(min_x, bottom_y),
+            Vec2(max_x, bottom_y),
+            Vec2(max_x, top_y),
+            Vec2(min_x, top_y),
         ]
 
     sample_step = max(max(radius, 0.0) * 2.0, margin * 0.35, span_y / 140.0, 1.0)
     sample_count = max(10, min(180, int(math.ceil(span_y / sample_step)) + 1))
     samples = []
     for index in range(sample_count):
-        y = min_y + span_y * index / max(1, sample_count - 1)
+        y = scan_min_y + span_y * index / max(1, sample_count - 1)
         extents = _horizontal_extents_at_y(polygons, y)
         if not extents:
             continue
@@ -2026,11 +2073,16 @@ def _air_duct_base_plate_polygon(component_polygons, margin, radius):
     if len(samples) < 2:
         min_x = min(point.x for point in all_points) - margin
         max_x = max(point.x for point in all_points) + margin
+        bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
+        top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
+        if top_y - bottom_y <= POINT_TOLERANCE:
+            bottom_y = min_y - margin
+            top_y = max_y + margin
         return [
-            Vec2(min_x, min_y - margin),
-            Vec2(max_x, min_y - margin),
-            Vec2(max_x, max_y + margin),
-            Vec2(min_x, max_y + margin),
+            Vec2(min_x, bottom_y),
+            Vec2(max_x, bottom_y),
+            Vec2(max_x, top_y),
+            Vec2(min_x, top_y),
         ]
 
     ys = [sample[0] for sample in samples]
@@ -2042,31 +2094,65 @@ def _air_duct_base_plate_polygon(component_polygons, margin, radius):
         [sample[2] for sample in samples],
         is_left_side=False,
     )
-    bottom_y = min_y - margin
-    top_y = max_y + margin
+    bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
+    top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
+    bottom_index = (
+        0 if lower_flat_y is not None
+        else _base_plate_stable_end_index(left_xs, right_xs, radius, margin, True)
+    )
+    top_index = (
+        len(ys) - 1 if upper_flat_y is not None
+        else _base_plate_stable_end_index(left_xs, right_xs, radius, margin, False)
+    )
 
-    left_side = [Vec2(left_xs[0], bottom_y)]
+    left_side = [Vec2(left_xs[bottom_index], bottom_y)]
     left_side.extend(Vec2(x, y) for y, x in zip(ys, left_xs))
-    left_side.append(Vec2(left_xs[-1], top_y))
+    left_side.append(Vec2(left_xs[top_index], top_y))
 
-    right_side = [Vec2(right_xs[-1], top_y)]
+    right_side = [Vec2(right_xs[top_index], top_y)]
     right_side.extend(Vec2(x, y) for y, x in zip(reversed(ys), reversed(right_xs)))
-    right_side.append(Vec2(right_xs[0], bottom_y))
+    right_side.append(Vec2(right_xs[bottom_index], bottom_y))
 
     return _dedupe_air_duct_points(left_side + right_side)
 
 
-def _air_duct_base_plate_region_contours(records, total_length, params, region):
+def _air_duct_base_plate_flat_bounds(axis, params):
+    if not axis:
+        return {}
+    axis_y = axis["center"].y
+    above_gap = max(0.0, getattr(params, "capsule_axis_gap_above_distance", 0.0))
+    below_gap = max(0.0, getattr(params, "capsule_axis_gap_below_distance", 0.0))
+    bounds = {"all": (None, None)}
+
+    if above_gap > POINT_TOLERANCE:
+        bounds["upper_inner"] = (axis_y, axis_y + above_gap)
+        bounds["upper_outer"] = (axis_y + above_gap, None)
+    else:
+        bounds["upper"] = (axis_y, None)
+
+    if below_gap > POINT_TOLERANCE:
+        bounds["lower_inner"] = (axis_y - below_gap, axis_y)
+        bounds["lower_outer"] = (None, axis_y - below_gap)
+    else:
+        bounds["lower"] = (None, axis_y)
+
+    return bounds
+
+
+def _air_duct_base_plate_region_contours(records, total_length, params, region, flat_bounds=None):
     component_polygons = _air_duct_component_polygons_for_region(
         records,
         total_length,
         params,
         region,
     )
+    lower_flat_y, upper_flat_y = flat_bounds or (None, None)
     polygon = _air_duct_base_plate_polygon(
         component_polygons,
         getattr(params, "air_duct_base_plate_margin", 0.0),
         getattr(params, "circle_radius", 0.0),
+        lower_flat_y=lower_flat_y,
+        upper_flat_y=upper_flat_y,
     )
     if len(polygon) < 3:
         return []
@@ -2125,6 +2211,10 @@ def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
         return []
 
     offset = _air_duct_template_offset(doc, chain)
+    flat_bounds_by_region = _air_duct_base_plate_flat_bounds(
+        _chain_axis(doc, chain),
+        params,
+    )
     contours = []
     for region in _ordered_air_duct_regions(grouped):
         for contour in _air_duct_base_plate_region_contours(
@@ -2132,6 +2222,7 @@ def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
             total_length,
             params,
             region,
+            flat_bounds=flat_bounds_by_region.get(region),
         ):
             shifted = [point + offset for point in contour["points"]]
             contours.append({
