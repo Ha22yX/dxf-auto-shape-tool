@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ezdxf
 from ezdxf.math import Vec2
 from fastapi import UploadFile
-from backend.app import upload_dxf, download_dxf, _apply_selection
+from backend.app import upload_dxf, download_dxf, _apply_selection, _select_handle
 from backend.config import DEFAULT_PARAMS
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
 from backend.state import SessionState, CircleParams
@@ -161,6 +161,28 @@ def test_entity_mapper():
     svg_x, svg_y = svg_exporter.wcs_to_svg(50, 0, base.bounds, base.scale)
     handle = entity_mapper.find_nearest_entity(state, svg_x, svg_y)
     assert handle is not None
+
+
+def test_select_handle_prefers_frontend_hover_handle():
+    doc = make_rect_doc()
+    base = svg_exporter.doc_to_base_svg(doc)
+    state = SessionState(
+        session_id="test",
+        original_doc=doc,
+        working_doc=doc,
+        svg_bounds=base.bounds,
+        svg_scale=base.scale,
+    )
+    handle = next(e.dxf.handle for e in doc.modelspace())
+
+    selected = _select_handle(state, {
+        "handle": handle,
+        "svg_x": -999999,
+        "svg_y": -999999,
+        "tol": 0.001,
+    })
+
+    assert selected == handle
 
 
 def test_circle_generator_on_arc():

@@ -45,12 +45,13 @@ class WSClient {
     }
 
     send(type, data) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
         this.ws.send(JSON.stringify({ type, data }));
+        return true;
     }
 
-    sendClick(svgX, svgY, append, tol) {
-        this.send("svg_click", { svg_x: svgX, svg_y: svgY, append, tol });
+    sendClick(svgX, svgY, append, tol, handle = null) {
+        return this.send("svg_click", { svg_x: svgX, svg_y: svgY, append, tol, handle });
     }
 
     sendHover(svgX, svgY, tol, requestId) {

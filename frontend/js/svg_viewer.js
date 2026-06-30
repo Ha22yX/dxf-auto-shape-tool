@@ -1126,11 +1126,16 @@ class SvgViewer {
         if (!this.svg) return;
 
         const pt = this.clientPointToSvg(e.clientX, e.clientY);
+        const hoverTarget = this._localHoverTarget(e);
+        const hoverHandle = hoverTarget
+            ? (hoverTarget.handle || (hoverTarget.getAttribute ? hoverTarget.getAttribute("data-handle") : null))
+            : this.lastHoverHandle;
         if (this.onClick) {
             this.onClick({
                 svgX: pt.x,
                 svgY: pt.y,
                 tol: 5 * this.wcsPerPixel(), // ~5px pick aperture in WCS
+                hoverHandle,
                 ctrlKey: e.ctrlKey || e.metaKey,
                 shiftKey: e.shiftKey,
             });

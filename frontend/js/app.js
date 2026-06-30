@@ -9,6 +9,7 @@ const App = {
     sessionId: null,
     bounds: null,
     scale: 1,
+    previewLoadingReasons: new Set(),
 
     init() {
         this._bindUpload();
@@ -63,7 +64,9 @@ const App = {
     _bindViewer() {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
-            wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol);
+            if (wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol, evt.hoverHandle)) {
+                this._showPreviewLoading("选择中...", "selection");
+            }
         };
 
         svgViewer.onMouseMove = (pt) => {
@@ -85,7 +88,7 @@ const App = {
 
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;
-            this._showPreviewLoading("计算中...");
+            this._showPreviewLoading("计算中...", "params");
             wsClient.sendParams(params);
         };
 
@@ -110,7 +113,7 @@ const App = {
             const saveBtn = document.getElementById("save-btn");
             try {
                 saveBtn.disabled = true;
-                this._showPreviewLoading("保存中...");
+                this._showPreviewLoading("保存中...", "save");
                 const synced = await API.updateParams(this.sessionId, parameterPanel.getParams());
                 if (synced.preview_geometry) {
                     svgViewer.setOverlay(synced.preview_geometry, parameterPanel.getShowGenerated());
@@ -130,7 +133,7 @@ const App = {
             } catch (err) {
                 this._showError(err.message || "下载失败");
             } finally {
-                this._hidePreviewLoading();
+                this._hidePreviewLoading("save");
                 saveBtn.disabled = false;
             }
         });
@@ -140,7 +143,9 @@ const App = {
             .addEventListener("click", () => {
                 if (!this.sessionId) return;
                 // Ask backend to clear selection by sending an explicit clear message.
-                wsClient.send("clear_selection", {});
+                if (wsClient.send("clear_selection", {})) {
+                    this._showPreviewLoading("清除中...", "selection");
+                }
             });
     },
 
@@ -154,7 +159,10 @@ const App = {
             if (data.stale_params_preview) return;
             const geometry = data.preview_geometry || {};
             svgViewer.setOverlay(geometry, data.show_generated);
-            this._hidePreviewLoading();
+            if (data.params_seq !== undefined) {
+                this._hidePreviewLoading("params");
+            }
+            this._hidePreviewLoading("selection");
 
             if (data.chain_info) {
                 this._updateStatus({ chain_info: data.chain_info });
@@ -167,7 +175,7 @@ const App = {
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
             svgViewer.clearHover();
-            this._hidePreviewLoading();
+            this._hidePreviewLoading("selection");
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
             });
@@ -183,6 +191,7 @@ const App = {
             }
             svgViewer.clearHover();
         } else if (msg.type === "no_selection") {
+            this._hidePreviewLoading("selection");
             return;
         } else if (msg.type === "error") {
             this._hidePreviewLoading();
@@ -206,20 +215,27 @@ const App = {
 
     _setLoading(show) {
         if (show) {
-            this._showPreviewLoading("加载中...");
+            this._showPreviewLoading("加载中...", "global");
         } else {
-            this._hidePreviewLoading();
+            this._hidePreviewLoading("global");
         }
     },
 
-    _showPreviewLoading(text = "计算中...") {
+    _showPreviewLoading(text = "计算中...", reason = "global") {
+        this.previewLoadingReasons.add(reason);
         const overlay = this._ensurePreviewLoading();
         const label = document.getElementById("preview-loading-text");
         if (label) label.textContent = text;
         if (overlay) overlay.classList.add("is-visible");
     },
 
-    _hidePreviewLoading() {
+    _hidePreviewLoading(reason = null) {
+        if (reason) {
+            this.previewLoadingReasons.delete(reason);
+        } else {
+            this.previewLoadingReasons.clear();
+        }
+        if (this.previewLoadingReasons.size > 0) return;
         const overlay = document.getElementById("preview-loading");
         if (overlay) overlay.classList.remove("is-visible");
     },

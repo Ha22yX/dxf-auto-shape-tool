@@ -173,6 +173,12 @@ async def get_svg(session_id: str):
 
 def _select_handle(state: SessionState, data: dict) -> Optional[str]:
     """Find the entity handle nearest to a click given in base-SVG output units."""
+    explicit_handle = data.get("handle")
+    if explicit_handle:
+        entity = state.working_doc.entitydb.get(str(explicit_handle))
+        if entity is not None and entity.dxftype() in entity_mapper.EDGE_TYPES:
+            return str(explicit_handle)
+
     svg_x = float(data.get("svg_x", 0))
     svg_y = float(data.get("svg_y", 0))
     tol = data.get("tol", None)
