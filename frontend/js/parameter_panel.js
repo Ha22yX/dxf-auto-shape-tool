@@ -300,7 +300,7 @@ class ParameterPanel {
                 "ray_count",
                 parse("ray_count", 200),
             ),
-            ray_direction: this.rayDirection ? this.rayDirection.value : "outward",
+            ray_direction: this.rayDirection ? this.rayDirection.value : "inward",
             dedupe_closed_rays: this.dedupeClosedRays
                 ? this.dedupeClosedRays.checked
                 : true,

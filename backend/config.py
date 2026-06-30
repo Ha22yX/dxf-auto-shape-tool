@@ -25,7 +25,7 @@ DEFAULT_PARAMS = {
     "capsule_axis_gap_below_distance": 0.0,
     "top_gap_distance": 40.0,
     "ray_count": 200,
-    "ray_direction": "outward",  # "inward" or "outward"
+    "ray_direction": "inward",  # "inward" or "outward"
     "dedupe_closed_rays": True,
 }
 

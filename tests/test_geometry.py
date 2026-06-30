@@ -96,6 +96,43 @@ def test_orient_normals_for_closed_chain():
     assert outward[3].isclose(Vec2(-1, 0))
 
 
+def test_closed_chain_normals_use_polygon_inside_test_for_concave_outline():
+    boundary_points = [
+        Vec2(0, 0),
+        Vec2(10, 0),
+        Vec2(10, 10),
+        Vec2(6, 10),
+        Vec2(6, 4),
+        Vec2(4, 4),
+        Vec2(4, 10),
+        Vec2(0, 10),
+    ]
+    boundary_samples = [
+        geom.SamplePoint(point, Vec2(0, 0), Vec2(0, 0), "B")
+        for point in boundary_points
+    ]
+    # This point is on the left inner notch edge. The geometric centroid
+    # fallback is not enough for all concave cases, so the inside probe must
+    # choose the solid side instead of assuming a global radial direction.
+    samples = [
+        geom.SamplePoint(Vec2(4, 6), Vec2(0, 1), Vec2(-1, 0), "A"),
+    ]
+
+    inward = geom.orient_normals_for_closed_chain(
+        samples,
+        inward=True,
+        boundary_samples=boundary_samples,
+    )
+    outward = geom.orient_normals_for_closed_chain(
+        samples,
+        inward=False,
+        boundary_samples=boundary_samples,
+    )
+
+    assert inward[0].isclose(Vec2(-1, 0))
+    assert outward[0].isclose(Vec2(1, 0))
+
+
 def test_sample_chain_with_arc():
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()

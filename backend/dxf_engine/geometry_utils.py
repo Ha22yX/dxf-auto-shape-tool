@@ -1198,36 +1198,115 @@ def orient_normals_to_center(samples: List[SamplePoint]) -> List[Vec2]:
     return [s.normal for s in samples]
 
 
-def orient_normals_for_closed_chain(samples: List[SamplePoint], inward: bool = True) -> List[Vec2]:
+def orient_normals_for_closed_chain(
+    samples: List[SamplePoint],
+    inward: bool = True,
+    boundary_samples: Optional[List[SamplePoint]] = None,
+) -> List[Vec2]:
     """
     Orient normals for a closed chain as one continuous outline.
 
     Multi-entity closed outlines often contain pieces stored in opposite DXF
     directions. For closed chains, trust each sample's local tangent/normal
-    after chain orientation, then choose the side that points toward/away from
-    the outline center. This keeps a split bottom edge and side curves behaving
-    as one complete surfboard outline.
+    after chain orientation, then choose the side whose tiny offset is actually
+    inside the closed outline. This keeps split bottom edges and side curves
+    behaving as one complete surfboard outline.
 
     Returns a new list of normals.
     """
     if not samples:
         return []
 
-    center = chain_centroid(samples)
+    boundary_points = [
+        sample.point for sample in (boundary_samples or samples)
+    ]
+    if len(boundary_points) < 3:
+        oriented = orient_normals_to_center(samples)
+        return oriented if inward else [-normal for normal in oriented]
+
+    center = _polygon_centroid_or_average(boundary_points)
+    offset = _inside_probe_offset(boundary_points)
     normals = []
     for sample in samples:
         normal = sample.normal
         if normal.magnitude <= 1e-9:
             normal = perpendicular(sample.tangent, clockwise=False)
-        to_center = center - sample.point
-        dot = normal.dot(to_center)
-
-        if inward:
-            if dot < 0:
-                normal = -normal
-        else:
-            if dot > 0:
-                normal = -normal
-        normals.append(normal)
+        normal = normalize(normal)
+        inward_normal = _choose_inward_normal(
+            sample.point,
+            normal,
+            boundary_points,
+            center,
+            offset,
+        )
+        normals.append(inward_normal if inward else -inward_normal)
 
     return normals
+
+
+def _inside_probe_offset(points: List[Vec2]) -> float:
+    min_x = min(point.x for point in points)
+    max_x = max(point.x for point in points)
+    min_y = min(point.y for point in points)
+    max_y = max(point.y for point in points)
+    diag = math.hypot(max_x - min_x, max_y - min_y)
+    return max(POINT_TOLERANCE * 20.0, diag * 1e-6, 1e-6)
+
+
+def _choose_inward_normal(
+    point: Vec2,
+    normal: Vec2,
+    boundary_points: List[Vec2],
+    center: Vec2,
+    offset: float,
+) -> Vec2:
+    for factor in (1.0, 2.0, 5.0, 10.0, 25.0, 50.0):
+        distance = offset * factor
+        plus_inside = point_in_polygon(point + normal * distance, boundary_points)
+        minus_inside = point_in_polygon(point - normal * distance, boundary_points)
+        if plus_inside != minus_inside:
+            return normal if plus_inside else -normal
+
+    # Degenerate/self-overlapping outlines can make both probes agree. Fall
+    # back to the local direction that points toward the outline's centroid.
+    return normal if normal.dot(center - point) >= 0 else -normal
+
+
+def point_in_polygon(point: Vec2, polygon: List[Vec2]) -> bool:
+    """Even-odd point-in-polygon test for a sampled closed outline."""
+    if len(polygon) < 3:
+        return False
+
+    inside = False
+    x = point.x
+    y = point.y
+    prev = polygon[-1]
+    for current in polygon:
+        y1 = prev.y
+        y2 = current.y
+        if (y1 > y) != (y2 > y):
+            x_intersect = prev.x + (y - y1) * (current.x - prev.x) / (y2 - y1)
+            if x_intersect > x:
+                inside = not inside
+        prev = current
+    return inside
+
+
+def _polygon_centroid_or_average(points: List[Vec2]) -> Vec2:
+    area2 = 0.0
+    cx = 0.0
+    cy = 0.0
+    count = len(points)
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % count]
+        cross = point.x * next_point.y - next_point.x * point.y
+        area2 += cross
+        cx += (point.x + next_point.x) * cross
+        cy += (point.y + next_point.y) * cross
+    if abs(area2) <= 1e-12:
+        return chain_centroid([
+            SamplePoint(point, Vec2(0, 0), Vec2(0, 0), "")
+            for point in points
+        ])
+    factor = 1.0 / (3.0 * area2)
+    return Vec2(cx * factor, cy * factor)

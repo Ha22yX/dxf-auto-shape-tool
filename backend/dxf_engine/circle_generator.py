@@ -255,9 +255,21 @@ def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=Non
 def _oriented_normals(doc, chain, samples, params, closed):
     """Compute consistently-oriented normals along the chain (left-of-tangent)."""
     if closed:
+        total = geom.chain_length(doc, chain)
+        boundary_count = max(129, min(5001, int(total / 2.0) if total > 0 else 129))
+        if boundary_count % 2 == 0:
+            boundary_count += 1
+        boundary_samples = geom.sample_chain(
+            doc,
+            chain,
+            boundary_count,
+            closed=True,
+            smooth_tangents=False,
+        )
         return geom.orient_normals_for_closed_chain(
             samples,
             inward=(params.ray_direction == "inward"),
+            boundary_samples=boundary_samples,
         )
 
     oriented_normals = [s.normal for s in samples]
