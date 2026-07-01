@@ -8,7 +8,7 @@ Two entry points:
 from typing import List, Tuple
 import math
 import ezdxf
-from ezdxf.math import Vec2
+from ezdxf.math import Vec2, offset_vertices_2d
 
 from backend.state import CircleParams
 from backend.config import (
@@ -2003,126 +2003,6 @@ def _smooth_base_plate_side_x(values, is_left_side):
     return smoothed
 
 
-def _base_plate_end_cap_xs(left_xs, right_xs, radius, margin, from_start, cap_center, cap_width):
-    widths = [
-        max(0.0, right - left)
-        for left, right in zip(left_xs, right_xs)
-    ]
-    index = 0 if from_start else len(widths) - 1
-    if not widths:
-        return 0.0, 0.0
-
-    max_width = max(widths)
-    left = left_xs[index]
-    right = right_xs[index]
-    if max_width <= POINT_TOLERANCE:
-        return left, right
-
-    # Keep natural surfboard noses/tails natural. The cap should use the real
-    # outline width at the extreme point; forcing a minimum width creates the
-    # visible square tabs the base plate is trying to avoid.
-    current_width = max(0.0, cap_width)
-    if current_width > POINT_TOLERANCE:
-        return cap_center - current_width * 0.5, cap_center + current_width * 0.5
-
-    invisible_width = max(POINT_TOLERANCE * 3.0, 1e-6)
-    return cap_center - invisible_width * 0.5, cap_center + invisible_width * 0.5
-
-
-def _base_plate_extreme_cap(points, target_y, radius, margin, use_lower_side):
-    exact_tolerance = max(POINT_TOLERANCE * 20.0, 1e-6)
-    exact_candidates = [
-        point
-        for point in points
-        if abs(point.y - target_y) <= exact_tolerance
-    ]
-
-    band = max(
-        POINT_TOLERANCE * 20.0,
-        min(
-            max(max(radius, 0.0) * 3.0, max(margin, 0.0) * 0.6),
-            max(max(radius, 0.0) * 6.0, max(margin, 0.0) * 1.2, 1.0),
-        ),
-    )
-    if use_lower_side:
-        candidates = [
-            point
-            for point in points
-            if target_y - POINT_TOLERANCE <= point.y <= target_y + band
-        ]
-    else:
-        candidates = [
-            point
-            for point in points
-            if target_y - band <= point.y <= target_y + POINT_TOLERANCE
-        ]
-
-    if exact_candidates:
-        exact_min_x = min(point.x for point in exact_candidates)
-        exact_max_x = max(point.x for point in exact_candidates)
-        exact_center = (exact_min_x + exact_max_x) * 0.5
-        exact_width = exact_max_x - exact_min_x
-        if candidates:
-            band_min_x = min(point.x for point in candidates)
-            band_max_x = max(point.x for point in candidates)
-            band_center = (band_min_x + band_max_x) * 0.5
-            band_width = band_max_x - band_min_x
-            # A true nose/tail apex is centered over the nearby section. If the
-            # exact extreme is off to one side, it is just a sloped side endpoint
-            # and the cap must use the nearby section to keep covering the duct.
-            if (
-                band_width > POINT_TOLERANCE
-                and exact_width <= POINT_TOLERANCE
-                and abs(exact_center - band_center) > band_width * 0.25
-            ):
-                return band_center, band_width
-        return exact_center, exact_width
-
-    if not candidates:
-        return None, 0.0
-    min_x = min(point.x for point in candidates)
-    max_x = max(point.x for point in candidates)
-    return (min_x + max_x) * 0.5, max_x - min_x
-
-
-def _trim_base_plate_cap_samples(
-    ys,
-    left_xs,
-    right_xs,
-    cap_left_x,
-    cap_right_x,
-    from_start,
-):
-    if len(left_xs) != len(right_xs) or len(ys) != len(left_xs):
-        return
-    if len(left_xs) <= 2:
-        return
-
-    def inside_cap(index):
-        return (
-            left_xs[index] > cap_left_x + POINT_TOLERANCE
-            or right_xs[index] < cap_right_x - POINT_TOLERANCE
-        )
-
-    if from_start:
-        trim_count = 0
-        while trim_count < len(left_xs) - 2 and inside_cap(trim_count):
-            trim_count += 1
-        if trim_count:
-            del ys[:trim_count]
-            del left_xs[:trim_count]
-            del right_xs[:trim_count]
-        return
-
-    trim_count = 0
-    while trim_count < len(left_xs) - 2 and inside_cap(len(left_xs) - 1 - trim_count):
-        trim_count += 1
-    if trim_count:
-        del ys[-trim_count:]
-        del left_xs[-trim_count:]
-        del right_xs[-trim_count:]
-
-
 def _base_plate_side_profile(polygons, margin, radius, min_y=None, max_y=None):
     clean_polygons = [
         _dedupe_air_duct_points(polygon)
@@ -2208,6 +2088,113 @@ def _base_plate_fallback_polygon(
     ]
 
 
+def _clip_polygon_by_horizontal_line(points, boundary_y, keep_above):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 3:
+        return points
+
+    boundary_y = float(boundary_y)
+
+    def is_inside(point):
+        if keep_above:
+            return point.y >= boundary_y - POINT_TOLERANCE
+        return point.y <= boundary_y + POINT_TOLERANCE
+
+    def intersection(start, end):
+        if abs(end.y - start.y) <= POINT_TOLERANCE:
+            return Vec2(end.x, boundary_y)
+        t = (boundary_y - start.y) / (end.y - start.y)
+        return Vec2(start.x + (end.x - start.x) * t, boundary_y)
+
+    clipped = []
+    for start, end in _polygon_edges(points):
+        start_inside = is_inside(start)
+        end_inside = is_inside(end)
+        if start_inside and end_inside:
+            clipped.append(end)
+        elif start_inside and not end_inside:
+            clipped.append(intersection(start, end))
+        elif not start_inside and end_inside:
+            clipped.append(intersection(start, end))
+            clipped.append(end)
+
+    return _dedupe_air_duct_points(clipped)
+
+
+def _force_flat_base_plate_boundary(points, boundary_y, xs, is_lower_boundary):
+    points = _dedupe_air_duct_points(points)
+    if len(points) < 3 or not xs:
+        return points
+
+    left_x, right_x = xs
+    boundary_y = float(boundary_y)
+    flat_points = [
+        point
+        for point in points
+        if abs(point.y - boundary_y) <= POINT_TOLERANCE * 10.0
+    ]
+    if len(flat_points) < 2:
+        return points
+
+    flat_a = Vec2(left_x, boundary_y)
+    flat_b = Vec2(right_x, boundary_y)
+
+    non_flat = [
+        point
+        for point in points
+        if abs(point.y - boundary_y) > POINT_TOLERANCE * 10.0
+    ]
+    if len(non_flat) < 2:
+        return [flat_a, flat_b]
+
+    if is_lower_boundary:
+        left_side = sorted(
+            [point for point in non_flat if point.x <= (left_x + right_x) * 0.5],
+            key=lambda point: point.y,
+        )
+        right_side = sorted(
+            [point for point in non_flat if point.x > (left_x + right_x) * 0.5],
+            key=lambda point: point.y,
+            reverse=True,
+        )
+        return _dedupe_air_duct_points([flat_a] + left_side + right_side + [flat_b])
+
+    left_side = sorted(
+        [point for point in non_flat if point.x <= (left_x + right_x) * 0.5],
+        key=lambda point: point.y,
+    )
+    right_side = sorted(
+        [point for point in non_flat if point.x > (left_x + right_x) * 0.5],
+        key=lambda point: point.y,
+        reverse=True,
+    )
+    return _dedupe_air_duct_points(left_side + [flat_a, flat_b] + right_side)
+
+
+def _base_plate_offset_polygon_from_samples(samples, margin):
+    if len(samples) < 2:
+        return []
+
+    left_side = [Vec2(left_x, y) for y, left_x, _ in samples]
+    right_side = [Vec2(right_x, y) for y, _, right_x in reversed(samples)]
+    envelope = _dedupe_air_duct_points(left_side + right_side)
+    if len(envelope) < 3:
+        return []
+
+    # Build the envelope clockwise so a positive ezdxf offset expands outward.
+    if _polygon_signed_area(envelope) > 0:
+        envelope = list(reversed(envelope))
+
+    if margin <= POINT_TOLERANCE:
+        return envelope
+
+    try:
+        offset_points = list(offset_vertices_2d(envelope, margin, closed=True))
+    except Exception:
+        return []
+    return _dedupe_air_duct_points([Vec2(point.x, point.y) for point in offset_points])
+
+
 def _air_duct_base_plate_polygon(
     component_polygons,
     margin,
@@ -2257,8 +2244,8 @@ def _air_duct_base_plate_polygon(
             side_profile,
         )
 
-    sample_step = max(max(radius, 0.0) * 2.0, margin * 0.35, span_y / 140.0, 1.0)
-    sample_count = max(10, min(180, int(math.ceil(span_y / sample_step)) + 1))
+    sample_step = max(max(radius, 0.0) * 1.2, margin * 0.2, span_y / 220.0, 0.5)
+    sample_count = max(16, min(320, int(math.ceil(span_y / sample_step)) + 1))
     samples = []
     for index in range(sample_count):
         y = scan_min_y + span_y * index / max(1, sample_count - 1)
@@ -2267,8 +2254,11 @@ def _air_duct_base_plate_polygon(
             continue
         left_x, right_x = extents
         if right_x - left_x <= POINT_TOLERANCE:
-            continue
-        samples.append((y, left_x - margin, right_x + margin))
+            is_natural_lower_tip = index == 0 and lower_flat_y is None
+            is_natural_upper_tip = index == sample_count - 1 and upper_flat_y is None
+            if not (is_natural_lower_tip or is_natural_upper_tip):
+                continue
+        samples.append((y, left_x, right_x))
 
     if len(samples) < 2:
         bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
@@ -2284,87 +2274,54 @@ def _air_duct_base_plate_polygon(
             side_profile,
         )
 
-    ys = [sample[0] for sample in samples]
-    left_xs = _smooth_base_plate_side_x(
-        [sample[1] for sample in samples],
-        is_left_side=True,
-    )
-    right_xs = _smooth_base_plate_side_x(
-        [sample[2] for sample in samples],
-        is_left_side=False,
-    )
-    bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
-    top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
-    bottom_cap_center, bottom_cap_width = _base_plate_extreme_cap(
-        all_points,
-        min_y,
-        radius,
-        margin,
-        True,
-    )
-    top_cap_center, top_cap_width = _base_plate_extreme_cap(
-        all_points,
-        max_y,
-        radius,
-        margin,
-        False,
-    )
-    if bottom_cap_center is None:
-        bottom_cap_center = (left_xs[0] + right_xs[0]) * 0.5
-    if top_cap_center is None:
-        top_cap_center = (left_xs[-1] + right_xs[-1]) * 0.5
+    offset_polygon = _base_plate_offset_polygon_from_samples(samples, margin)
+    if len(offset_polygon) < 3:
+        bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
+        top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
+        if top_y - bottom_y <= POINT_TOLERANCE:
+            bottom_y = min_y - margin
+            top_y = max_y + margin
+        return _base_plate_fallback_polygon(
+            all_points,
+            margin,
+            bottom_y,
+            top_y,
+            side_profile,
+        )
+
     if lower_flat_y is not None:
+        lower_flat_y = float(lower_flat_y)
+        offset_polygon = _clip_polygon_by_horizontal_line(
+            offset_polygon,
+            lower_flat_y,
+            keep_above=True,
+        )
         profile_xs = _base_plate_profile_xs_at(side_profile, lower_flat_y)
-        bottom_left_x, bottom_right_x = profile_xs if profile_xs else (left_xs[0], right_xs[0])
-    else:
-        bottom_left_x, bottom_right_x = _base_plate_end_cap_xs(
-            left_xs,
-            right_xs,
-            radius,
-            margin,
-            True,
-            bottom_cap_center,
-            bottom_cap_width,
-        )
-        _trim_base_plate_cap_samples(
-            ys,
-            left_xs,
-            right_xs,
-            bottom_left_x,
-            bottom_right_x,
-            from_start=True,
-        )
+        if profile_xs:
+            offset_polygon = _force_flat_base_plate_boundary(
+                offset_polygon,
+                lower_flat_y,
+                profile_xs,
+                is_lower_boundary=True,
+            )
+
     if upper_flat_y is not None:
+        upper_flat_y = float(upper_flat_y)
+        offset_polygon = _clip_polygon_by_horizontal_line(
+            offset_polygon,
+            upper_flat_y,
+            keep_above=False,
+        )
         profile_xs = _base_plate_profile_xs_at(side_profile, upper_flat_y)
-        top_left_x, top_right_x = profile_xs if profile_xs else (left_xs[-1], right_xs[-1])
-    else:
-        top_left_x, top_right_x = _base_plate_end_cap_xs(
-            left_xs,
-            right_xs,
-            radius,
-            margin,
-            False,
-            top_cap_center,
-            top_cap_width,
-        )
-        _trim_base_plate_cap_samples(
-            ys,
-            left_xs,
-            right_xs,
-            top_left_x,
-            top_right_x,
-            from_start=False,
-        )
+        if profile_xs:
+            offset_polygon = _force_flat_base_plate_boundary(
+                offset_polygon,
+                upper_flat_y,
+                profile_xs,
+                is_lower_boundary=False,
+            )
 
-    left_side = [Vec2(bottom_left_x, bottom_y)]
-    left_side.extend(Vec2(x, y) for y, x in zip(ys, left_xs))
-    left_side.append(Vec2(top_left_x, top_y))
-
-    right_side = [Vec2(top_right_x, top_y)]
-    right_side.extend(Vec2(x, y) for y, x in zip(reversed(ys), reversed(right_xs)))
-    right_side.append(Vec2(bottom_right_x, bottom_y))
-
-    return _dedupe_air_duct_points(left_side + right_side)
+    return _dedupe_air_duct_points(offset_polygon)
 
 
 def _air_duct_base_plate_region_data(grouped, total_length, params):
