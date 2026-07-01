@@ -1879,6 +1879,72 @@ def test_air_duct_base_plate_tip_does_not_create_artificial_square_tab():
         assert max(point.x for point in top_points) - min(point.x for point in top_points) <= 1e-3
 
 
+def test_air_duct_end_gap_bridges_top_gap_smoothly():
+    records = []
+    for index, (x, y) in enumerate([
+        (-18.0, 82.0),
+        (-42.0, 54.0),
+        (-50.0, 12.0),
+        (50.0, 12.0),
+        (42.0, 54.0),
+        (18.0, 82.0),
+    ]):
+        near = Vec2(x, y)
+        far = Vec2(x * 0.55, y - 28.0)
+        records.append({
+            "near": near,
+            "far": far,
+            "near_center": near,
+            "far_center": far,
+            "circle_centers": [near, far],
+            "radius": 2.0,
+            "width": (far - near).magnitude,
+            "source_distance": float(index * 20),
+            "source_point": near,
+        })
+
+    params = CircleParams(circle_radius=2.0, top_gap_distance=80.0)
+    bridged = circle_generator._bridge_air_duct_end_gap_records(
+        records,
+        "upper",
+        params,
+    )
+    polygon = circle_generator._air_duct_component_polygon(bridged)
+    bridge_points = [
+        record["source_point"]
+        for record in bridged[len(records):]
+    ]
+
+    assert len(bridged) > len(records)
+    assert any(abs(point.x) <= 2.0 for point in bridge_points)
+    assert max(point.y for point in bridge_points) > max(record["source_point"].y for record in records)
+    assert max(point.y for point in polygon) > 82.0
+
+
+def test_air_duct_base_plate_samples_are_symmetric_for_tip_gaps():
+    component = [
+        Vec2(-70.0, 0.0),
+        Vec2(-52.0, 48.0),
+        Vec2(-18.0, 96.0),
+        Vec2(16.0, 94.0),
+        Vec2(45.0, 45.0),
+        Vec2(62.0, 0.0),
+    ]
+
+    plate = circle_generator._air_duct_base_plate_polygon(
+        [component],
+        margin=12.0,
+        radius=3.5,
+        extent_polygons=[component],
+    )
+
+    assert plate
+    min_x = min(point.x for point in plate)
+    max_x = max(point.x for point in plate)
+    center_x = (min(point.x for point in component) + max(point.x for point in component)) * 0.5
+    assert abs(((min_x + max_x) * 0.5) - center_x) < 0.1
+
+
 def test_air_duct_base_plate_end_cap_does_not_fold_inward():
     component = [
         Vec2(400.0, 0.0),

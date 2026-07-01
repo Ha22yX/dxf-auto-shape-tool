@@ -1523,6 +1523,122 @@ def _split_air_duct_components(records, total_length, split_disconnected):
     return components or [ordered]
 
 
+def _symmetric_x_extents(left_x, right_x, center_x):
+    half_width = max(abs(center_x - left_x), abs(right_x - center_x))
+    return center_x - half_width, center_x + half_width
+
+
+def _record_vec(record, key, fallback_key=None):
+    value = record.get(key)
+    if value is None and fallback_key:
+        value = record.get(fallback_key)
+    return value
+
+
+def _quadratic_vec(start, control, end, t):
+    omt = 1.0 - t
+    return start * (omt * omt) + control * (2.0 * omt * t) + end * (t * t)
+
+
+def _interpolate_air_duct_record(start, end, t, control_shift, source_distance):
+    bridge = {
+        "source_distance": source_distance,
+        "width": start.get("width", 0.0) * (1.0 - t) + end.get("width", 0.0) * t,
+        "radius": start.get("radius", 0.0) * (1.0 - t) + end.get("radius", 0.0) * t,
+    }
+    for key, fallback_key in (
+        ("source_point", None),
+        ("near_center", "near"),
+        ("far_center", "far"),
+        ("near", "near_center"),
+        ("far", "far_center"),
+    ):
+        start_point = _record_vec(start, key, fallback_key)
+        end_point = _record_vec(end, key, fallback_key)
+        if start_point is None or end_point is None:
+            continue
+        control = (start_point + end_point) * 0.5 + control_shift
+        bridge[key] = _quadratic_vec(start_point, control, end_point, t)
+
+    centers = []
+    if bridge.get("near_center") is not None:
+        centers.append(bridge["near_center"])
+    if bridge.get("far_center") is not None:
+        centers.append(bridge["far_center"])
+    if centers:
+        bridge["circle_centers"] = centers
+    return bridge
+
+
+def _bridge_air_duct_end_gap_records(records, region, params):
+    if len(records) < 4:
+        return records
+    if region.endswith("_inner"):
+        return records
+    if not (region.startswith("upper") or region.startswith("lower")):
+        return records
+
+    points = [record["source_point"] for record in records]
+    xs = [point.x for point in points]
+    ys = [point.y for point in points]
+    span_x = max(xs) - min(xs)
+    span_y = max(ys) - min(ys)
+    if span_x <= POINT_TOLERANCE or span_y <= POINT_TOLERANCE:
+        return records
+
+    first = records[0]["source_point"]
+    last = records[-1]["source_point"]
+    center_x = (min(xs) + max(xs)) * 0.5
+    average_width = sum(record.get("width", 0.0) for record in records) / len(records)
+    radius = max(0.0, getattr(params, "circle_radius", 0.0))
+    endpoint_band = max(span_y * 0.22, average_width * 2.0, radius * 8.0, POINT_TOLERANCE * 100.0)
+    endpoint_gap = (first - last).magnitude
+    straddles_axis = (first.x - center_x) * (last.x - center_x) <= POINT_TOLERANCE
+    has_visible_gap = endpoint_gap > max(average_width * 0.8, radius * 2.0, POINT_TOLERANCE * 100.0)
+    if not straddles_axis or not has_visible_gap:
+        return records
+
+    if region.startswith("upper"):
+        if min(first.y, last.y) < max(ys) - endpoint_band:
+            return records
+        direction = 1.0
+    else:
+        if max(first.y, last.y) > min(ys) + endpoint_band:
+            return records
+        direction = -1.0
+
+    gap_width = abs(first.x - last.x)
+    bridge_height = max(gap_width * 0.35, average_width * 1.25, radius * 6.0, 1.0)
+    control_shift = Vec2(center_x - (first.x + last.x) * 0.5, direction * bridge_height)
+    step = max(average_width * 0.6, radius * 4.0, 2.0)
+    bridge_count = max(4, min(14, int(math.ceil(gap_width / step))))
+    if bridge_count % 2 == 0:
+        bridge_count += 1
+    start_distance = records[-1].get("source_distance", 0.0)
+    end_distance = records[0].get("source_distance", start_distance + endpoint_gap)
+    if end_distance <= start_distance:
+        end_distance = start_distance + endpoint_gap
+
+    bridged = list(records)
+    for index in range(1, bridge_count + 1):
+        t = index / (bridge_count + 1)
+        bridged.append(_interpolate_air_duct_record(
+            records[-1],
+            records[0],
+            t,
+            control_shift,
+            start_distance + (end_distance - start_distance) * t,
+        ))
+    return bridged
+
+
+def _bridge_air_duct_components_end_gaps(components, region, params):
+    return [
+        _bridge_air_duct_end_gap_records(component, region, params)
+        for component in components
+    ]
+
+
 def _air_duct_curve(points, endpoint_margin=0.0):
     points = _remove_hairpin_points(points)
     points = _extend_open_curve_endpoints(points, endpoint_margin)
@@ -1807,6 +1923,7 @@ def _air_duct_region_contours(records, total_length, params, region):
         return []
     split_disconnected = region.endswith("_inner")
     components = _split_air_duct_components(records, total_length, split_disconnected)
+    components = _bridge_air_duct_components_end_gaps(components, region, params)
     ordered = [record for component in components for record in component]
     endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
     endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
@@ -1996,6 +2113,7 @@ def _air_duct_component_polygons_for_region(records, total_length, params, regio
         return []
     split_disconnected = region.endswith("_inner")
     components = _split_air_duct_components(records, total_length, split_disconnected)
+    components = _bridge_air_duct_components_end_gaps(components, region, params)
     endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
     endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
     return [
@@ -2045,6 +2163,7 @@ def _base_plate_side_profile(polygons, margin, radius, min_y=None, max_y=None):
         return []
 
     all_points = [point for polygon in clean_polygons for point in polygon]
+    center_x = (min(point.x for point in all_points) + max(point.x for point in all_points)) * 0.5
     scan_min_y = min(point.y for point in all_points) if min_y is None else float(min_y)
     scan_max_y = max(point.y for point in all_points) if max_y is None else float(max_y)
     span_y = scan_max_y - scan_min_y
@@ -2062,6 +2181,7 @@ def _base_plate_side_profile(polygons, margin, radius, min_y=None, max_y=None):
         left_x, right_x = extents
         if right_x - left_x <= POINT_TOLERANCE:
             continue
+        left_x, right_x = _symmetric_x_extents(left_x, right_x, center_x)
         profile.append((y, left_x - margin, right_x + margin))
 
     if len(profile) < 2:
@@ -2106,8 +2226,10 @@ def _base_plate_fallback_polygon(
     top_y,
     side_profile=None,
 ):
-    min_x = min(point.x for point in all_points) - margin
-    max_x = max(point.x for point in all_points) + margin
+    raw_min_x = min(point.x for point in all_points)
+    raw_max_x = max(point.x for point in all_points)
+    center_x = (raw_min_x + raw_max_x) * 0.5
+    min_x, max_x = _symmetric_x_extents(raw_min_x - margin, raw_max_x + margin, center_x)
     bottom_xs = _base_plate_profile_xs_at(side_profile, bottom_y)
     top_xs = _base_plate_profile_xs_at(side_profile, top_y)
     bottom_left_x, bottom_right_x = bottom_xs if bottom_xs else (min_x, max_x)
@@ -2252,7 +2374,13 @@ def _air_duct_base_plate_polygon(
             for polygon in extent_polygons
             if len(_dedupe_air_duct_points(polygon)) >= 3
         ] or polygons
+    symmetric_samples = bool(extent_polygons)
     all_points = [point for polygon in polygons for point in polygon]
+    extent_points = [point for polygon in extent_source for point in polygon]
+    center_x = (
+        min(point.x for point in extent_points)
+        + max(point.x for point in extent_points)
+    ) * 0.5
     min_y = min(point.y for point in all_points)
     max_y = max(point.y for point in all_points)
     scan_min_y = min_y
@@ -2290,6 +2418,8 @@ def _air_duct_base_plate_polygon(
             is_natural_upper_tip = index == sample_count - 1 and upper_flat_y is None
             if not (is_natural_lower_tip or is_natural_upper_tip):
                 continue
+        if symmetric_samples:
+            left_x, right_x = _symmetric_x_extents(left_x, right_x, center_x)
         samples.append((y, left_x, right_x))
 
     if len(samples) < 2:
