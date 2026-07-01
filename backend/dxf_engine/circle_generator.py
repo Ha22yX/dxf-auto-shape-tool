@@ -2001,25 +2001,25 @@ def _base_plate_end_cap_xs(left_xs, right_xs, radius, margin, from_start, cap_ce
     if max_width <= POINT_TOLERANCE:
         return left, right
 
-    # Rounded surfboard noses/tails often have no usable width exactly at the
-    # highest/lowest point. Give the flat end a small manufacturable width, but
-    # keep it centered on the real end instead of borrowing a much wider inner
-    # cross-section, which creates wing-like tabs.
+    # Keep natural surfboard noses/tails natural. The cap should use the real
+    # outline width at the extreme point; forcing a minimum width creates the
+    # visible square tabs the base plate is trying to avoid.
     current_width = max(0.0, cap_width)
-    min_width = min(
-        max_width,
-        max(
-            current_width,
-            min(max_width * 0.12, max(margin, 0.0) * 0.8, max(radius, 0.0) * 3.0),
-        ),
-    )
-    if current_width >= min_width - POINT_TOLERANCE:
+    if current_width > POINT_TOLERANCE:
         return cap_center - current_width * 0.5, cap_center + current_width * 0.5
 
-    return cap_center - min_width * 0.5, cap_center + min_width * 0.5
+    invisible_width = max(POINT_TOLERANCE * 3.0, 1e-6)
+    return cap_center - invisible_width * 0.5, cap_center + invisible_width * 0.5
 
 
 def _base_plate_extreme_cap(points, target_y, radius, margin, use_lower_side):
+    exact_tolerance = max(POINT_TOLERANCE * 20.0, 1e-6)
+    exact_candidates = [
+        point
+        for point in points
+        if abs(point.y - target_y) <= exact_tolerance
+    ]
+
     band = max(
         POINT_TOLERANCE * 20.0,
         min(
@@ -2039,12 +2039,28 @@ def _base_plate_extreme_cap(points, target_y, radius, margin, use_lower_side):
             for point in points
             if target_y - band <= point.y <= target_y + POINT_TOLERANCE
         ]
-    if not candidates:
-        candidates = [
-            point
-            for point in points
-            if abs(point.y - target_y) <= max(POINT_TOLERANCE * 20.0, 1e-6)
-        ]
+
+    if exact_candidates:
+        exact_min_x = min(point.x for point in exact_candidates)
+        exact_max_x = max(point.x for point in exact_candidates)
+        exact_center = (exact_min_x + exact_max_x) * 0.5
+        exact_width = exact_max_x - exact_min_x
+        if candidates:
+            band_min_x = min(point.x for point in candidates)
+            band_max_x = max(point.x for point in candidates)
+            band_center = (band_min_x + band_max_x) * 0.5
+            band_width = band_max_x - band_min_x
+            # A true nose/tail apex is centered over the nearby section. If the
+            # exact extreme is off to one side, it is just a sloped side endpoint
+            # and the cap must use the nearby section to keep covering the duct.
+            if (
+                band_width > POINT_TOLERANCE
+                and exact_width <= POINT_TOLERANCE
+                and abs(exact_center - band_center) > band_width * 0.25
+            ):
+                return band_center, band_width
+        return exact_center, exact_width
+
     if not candidates:
         return None, 0.0
     min_x = min(point.x for point in candidates)
