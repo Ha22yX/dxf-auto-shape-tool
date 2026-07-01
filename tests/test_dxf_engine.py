@@ -1806,6 +1806,21 @@ def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
         assert abs(min(point.y for point in by_region[upper_region]) - expected_split) < 1e-6
         assert abs(max(point.y for point in by_region[lower_region]) - expected_split) < 1e-6
 
+        upper_split_points = [
+            point
+            for point in by_region[upper_region]
+            if abs(point.y - expected_split) < 1e-6
+        ]
+        lower_split_points = [
+            point
+            for point in by_region[lower_region]
+            if abs(point.y - expected_split) < 1e-6
+        ]
+        assert len(upper_split_points) >= 2
+        assert len(lower_split_points) >= 2
+        assert abs(min(point.x for point in upper_split_points) - min(point.x for point in lower_split_points)) < 1e-6
+        assert abs(max(point.x for point in upper_split_points) - max(point.x for point in lower_split_points)) < 1e-6
+
 
 def test_air_duct_base_plate_end_cap_stays_near_real_tip_width():
     component = [

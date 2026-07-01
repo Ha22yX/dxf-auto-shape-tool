@@ -2090,12 +2090,99 @@ def _trim_base_plate_cap_samples(
         del right_xs[-trim_count:]
 
 
+def _base_plate_side_profile(polygons, margin, radius, min_y=None, max_y=None):
+    clean_polygons = [
+        _dedupe_air_duct_points(polygon)
+        for polygon in polygons
+        if len(_dedupe_air_duct_points(polygon)) >= 3
+    ]
+    if not clean_polygons:
+        return []
+
+    all_points = [point for polygon in clean_polygons for point in polygon]
+    scan_min_y = min(point.y for point in all_points) if min_y is None else float(min_y)
+    scan_max_y = max(point.y for point in all_points) if max_y is None else float(max_y)
+    span_y = scan_max_y - scan_min_y
+    if span_y <= POINT_TOLERANCE:
+        return []
+
+    sample_step = max(max(radius, 0.0) * 2.0, margin * 0.35, span_y / 180.0, 1.0)
+    sample_count = max(12, min(240, int(math.ceil(span_y / sample_step)) + 1))
+    profile = []
+    for index in range(sample_count):
+        y = scan_min_y + span_y * index / max(1, sample_count - 1)
+        extents = _horizontal_extents_at_y(clean_polygons, y)
+        if not extents:
+            continue
+        left_x, right_x = extents
+        if right_x - left_x <= POINT_TOLERANCE:
+            continue
+        profile.append((y, left_x - margin, right_x + margin))
+
+    if len(profile) < 2:
+        return profile
+
+    ys = [item[0] for item in profile]
+    left_xs = _smooth_base_plate_side_x([item[1] for item in profile], True)
+    right_xs = _smooth_base_plate_side_x([item[2] for item in profile], False)
+    return list(zip(ys, left_xs, right_xs))
+
+
+def _base_plate_profile_xs_at(profile, target_y):
+    if not profile:
+        return None
+    target_y = float(target_y)
+    ordered = sorted(profile, key=lambda item: item[0])
+    if target_y <= ordered[0][0]:
+        return ordered[0][1], ordered[0][2]
+    if target_y >= ordered[-1][0]:
+        return ordered[-1][1], ordered[-1][2]
+
+    for current, nxt in zip(ordered, ordered[1:]):
+        y0, left0, right0 = current
+        y1, left1, right1 = nxt
+        if abs(target_y - y0) <= POINT_TOLERANCE:
+            return left0, right0
+        if y0 <= target_y <= y1:
+            if abs(y1 - y0) <= POINT_TOLERANCE:
+                return left0, right0
+            t = (target_y - y0) / (y1 - y0)
+            return (
+                left0 + (left1 - left0) * t,
+                right0 + (right1 - right0) * t,
+            )
+    return ordered[-1][1], ordered[-1][2]
+
+
+def _base_plate_fallback_polygon(
+    all_points,
+    margin,
+    bottom_y,
+    top_y,
+    side_profile=None,
+):
+    min_x = min(point.x for point in all_points) - margin
+    max_x = max(point.x for point in all_points) + margin
+    bottom_xs = _base_plate_profile_xs_at(side_profile, bottom_y)
+    top_xs = _base_plate_profile_xs_at(side_profile, top_y)
+    bottom_left_x, bottom_right_x = bottom_xs if bottom_xs else (min_x, max_x)
+    top_left_x, top_right_x = top_xs if top_xs else (min_x, max_x)
+    return [
+        Vec2(bottom_left_x, bottom_y),
+        Vec2(bottom_right_x, bottom_y),
+        Vec2(top_right_x, top_y),
+        Vec2(top_left_x, top_y),
+    ]
+
+
 def _air_duct_base_plate_polygon(
     component_polygons,
     margin,
     radius,
     lower_flat_y=None,
     upper_flat_y=None,
+    side_profile=None,
+    extent_polygons=None,
 ):
     polygons = [
         _dedupe_air_duct_points(polygon)
@@ -2106,6 +2193,13 @@ def _air_duct_base_plate_polygon(
         return []
 
     margin = max(0.0, float(margin or 0.0))
+    extent_source = polygons
+    if extent_polygons:
+        extent_source = [
+            _dedupe_air_duct_points(polygon)
+            for polygon in extent_polygons
+            if len(_dedupe_air_duct_points(polygon)) >= 3
+        ] or polygons
     all_points = [point for polygon in polygons for point in polygon]
     min_y = min(point.y for point in all_points)
     max_y = max(point.y for point in all_points)
@@ -2117,26 +2211,25 @@ def _air_duct_base_plate_polygon(
         scan_max_y = min(scan_max_y, float(upper_flat_y))
     span_y = scan_max_y - scan_min_y
     if span_y <= POINT_TOLERANCE:
-        min_x = min(point.x for point in all_points) - margin
-        max_x = max(point.x for point in all_points) + margin
         bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
         top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
         if top_y - bottom_y <= POINT_TOLERANCE:
             bottom_y = min_y - margin
             top_y = max_y + margin
-        return [
-            Vec2(min_x, bottom_y),
-            Vec2(max_x, bottom_y),
-            Vec2(max_x, top_y),
-            Vec2(min_x, top_y),
-        ]
+        return _base_plate_fallback_polygon(
+            all_points,
+            margin,
+            bottom_y,
+            top_y,
+            side_profile,
+        )
 
     sample_step = max(max(radius, 0.0) * 2.0, margin * 0.35, span_y / 140.0, 1.0)
     sample_count = max(10, min(180, int(math.ceil(span_y / sample_step)) + 1))
     samples = []
     for index in range(sample_count):
         y = scan_min_y + span_y * index / max(1, sample_count - 1)
-        extents = _horizontal_extents_at_y(polygons, y)
+        extents = _horizontal_extents_at_y(extent_source, y)
         if not extents:
             continue
         left_x, right_x = extents
@@ -2145,19 +2238,18 @@ def _air_duct_base_plate_polygon(
         samples.append((y, left_x - margin, right_x + margin))
 
     if len(samples) < 2:
-        min_x = min(point.x for point in all_points) - margin
-        max_x = max(point.x for point in all_points) + margin
         bottom_y = float(lower_flat_y) if lower_flat_y is not None else min_y - margin
         top_y = float(upper_flat_y) if upper_flat_y is not None else max_y + margin
         if top_y - bottom_y <= POINT_TOLERANCE:
             bottom_y = min_y - margin
             top_y = max_y + margin
-        return [
-            Vec2(min_x, bottom_y),
-            Vec2(max_x, bottom_y),
-            Vec2(max_x, top_y),
-            Vec2(min_x, top_y),
-        ]
+        return _base_plate_fallback_polygon(
+            all_points,
+            margin,
+            bottom_y,
+            top_y,
+            side_profile,
+        )
 
     ys = [sample[0] for sample in samples]
     left_xs = _smooth_base_plate_side_x(
@@ -2189,7 +2281,8 @@ def _air_duct_base_plate_polygon(
     if top_cap_center is None:
         top_cap_center = (left_xs[-1] + right_xs[-1]) * 0.5
     if lower_flat_y is not None:
-        bottom_left_x, bottom_right_x = left_xs[0], right_xs[0]
+        profile_xs = _base_plate_profile_xs_at(side_profile, lower_flat_y)
+        bottom_left_x, bottom_right_x = profile_xs if profile_xs else (left_xs[0], right_xs[0])
     else:
         bottom_left_x, bottom_right_x = _base_plate_end_cap_xs(
             left_xs,
@@ -2209,7 +2302,8 @@ def _air_duct_base_plate_polygon(
             from_start=True,
         )
     if upper_flat_y is not None:
-        top_left_x, top_right_x = left_xs[-1], right_xs[-1]
+        profile_xs = _base_plate_profile_xs_at(side_profile, upper_flat_y)
+        top_left_x, top_right_x = profile_xs if profile_xs else (left_xs[-1], right_xs[-1])
     else:
         top_left_x, top_right_x = _base_plate_end_cap_xs(
             left_xs,
@@ -2297,6 +2391,8 @@ def _air_duct_base_plate_region_contours(
     region,
     flat_bounds=None,
     component_polygons=None,
+    side_profile=None,
+    extent_polygons=None,
 ):
     if component_polygons is None:
         component_polygons = _air_duct_component_polygons_for_region(
@@ -2312,6 +2408,8 @@ def _air_duct_base_plate_region_contours(
         getattr(params, "circle_radius", 0.0),
         lower_flat_y=lower_flat_y,
         upper_flat_y=upper_flat_y,
+        side_profile=side_profile,
+        extent_polygons=extent_polygons,
     )
     if len(polygon) < 3:
         return []
@@ -2372,6 +2470,26 @@ def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
     offset = _air_duct_template_offset(doc, chain)
     region_data = _air_duct_base_plate_region_data(grouped, total_length, params)
     flat_bounds_by_region = _air_duct_base_plate_flat_bounds_from_regions(region_data)
+    all_component_polygons = [
+        polygon
+        for data in region_data.values()
+        for polygon in data["component_polygons"]
+    ]
+    all_points = [
+        point
+        for polygon in all_component_polygons
+        for point in polygon
+    ]
+    side_profile = []
+    if all_points:
+        margin = getattr(params, "air_duct_base_plate_margin", 0.0)
+        side_profile = _base_plate_side_profile(
+            all_component_polygons,
+            max(0.0, float(margin or 0.0)),
+            getattr(params, "circle_radius", 0.0),
+            min(point.y for point in all_points),
+            max(point.y for point in all_points),
+        )
     contours = []
     for region in _ordered_air_duct_regions(region_data):
         data = region_data[region]
@@ -2382,6 +2500,8 @@ def _air_duct_base_plate_contours(doc, chain, params, placements, kept_items):
             region,
             flat_bounds=flat_bounds_by_region.get(region),
             component_polygons=data["component_polygons"],
+            side_profile=side_profile,
+            extent_polygons=all_component_polygons,
         ):
             shifted = [point + offset for point in contour["points"]]
             contours.append({
