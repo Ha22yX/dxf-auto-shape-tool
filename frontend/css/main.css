@@ -176,10 +176,10 @@ body {
 .param-label::before {
     content: attr(data-tooltip);
     position: absolute;
-    right: 0;
+    left: 0;
     top: calc(100% + 7px);
-    z-index: 60;
-    width: 238px;
+    z-index: 1000;
+    width: min(238px, calc(100vw - 32px));
     padding: 9px 10px;
     border: 1px solid #3d4a50;
     border-radius: 6px;

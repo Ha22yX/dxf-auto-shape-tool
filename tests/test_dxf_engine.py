@@ -2022,6 +2022,50 @@ def test_air_duct_axis_gap_splits_into_four_independent_regions():
     assert all(by_region[region] for region in by_region)
 
 
+def test_air_duct_simple_mode_uses_one_unpartitioned_region():
+    doc = make_rect_doc()
+    handles = [entity.dxf.handle for entity in doc.modelspace()]
+    params = CircleParams(
+        circle_radius=2.0,
+        circles_per_ray=2,
+        circle_spacing=12.0,
+        ray_offset=12.0,
+        ray_count=36,
+        top_gap_distance=0.0,
+        capsule_axis_gap_above_distance=18.0,
+        capsule_axis_gap_below_distance=18.0,
+        air_duct_enabled=True,
+        air_duct_simple_mode=True,
+    )
+    placements = circle_generator.compute_placements(doc, handles, params, closed=True)
+    kept_items, _ = circle_generator._overlap_pruned_circle_items(
+        doc,
+        handles,
+        params,
+        placements,
+    )
+
+    contours = circle_generator._air_duct_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+    base_plates = circle_generator._air_duct_base_plate_contours(
+        doc,
+        handles,
+        params,
+        placements,
+        kept_items,
+    )
+
+    assert contours
+    assert base_plates
+    assert {contour["region"] for contour in contours} == {"simple"}
+    assert {contour["region"] for contour in base_plates} == {"simple"}
+
+
 def test_dense_split_air_duct_region_bridges_sides_as_single_outline():
     records = []
     for side_x, distance_base in [(0.0, 0.0), (120.0, 1000.0)]:

@@ -66,6 +66,7 @@ PARAM_LOG_LABELS = {
     "capsule_axis_gap_above_distance": "上方无长条区",
     "capsule_axis_gap_below_distance": "下方无长条区",
     "air_duct_enabled": "生成导风槽",
+    "air_duct_simple_mode": "精简版导风槽",
     "air_duct_inlet_distance": "横向吸风口偏移",
     "air_duct_base_plate_margin": "底板外扩距离",
     "top_gap_distance": "顶点留空距离",

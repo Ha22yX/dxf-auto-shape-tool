@@ -42,6 +42,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     icon=str(project_root / 'frontend' / 'assets' / 'app-icon.ico'),
+    version=str(project_root / 'packaging' / 'version-info.txt'),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

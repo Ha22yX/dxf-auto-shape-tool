@@ -120,6 +120,7 @@ class ParameterPanel {
         this.rayDirection = document.getElementById("param-ray-direction");
         this.dedupeClosedRays = document.getElementById("param-dedupe-closed-rays");
         this.airDuctEnabled = document.getElementById("param-air-duct-enabled");
+        this.airDuctSimpleMode = document.getElementById("param-air-duct-simple-mode");
         this.airDuctCompareOverlay = document.getElementById("toggle-air-duct-compare-overlay");
         this.togglePreview = document.getElementById("toggle-preview");
         this.capsuleStartMidHint = document.getElementById("capsule-start-mid-hint");
@@ -314,6 +315,9 @@ class ParameterPanel {
             air_duct_enabled: this.airDuctEnabled
                 ? this.airDuctEnabled.checked
                 : true,
+            air_duct_simple_mode: this.airDuctSimpleMode
+                ? this.airDuctSimpleMode.checked
+                : false,
             air_duct_inlet_distance: this._normalizeInputValue(
                 "air_duct_inlet_distance",
                 parse("air_duct_inlet_distance", 20),
@@ -355,6 +359,9 @@ class ParameterPanel {
         }
         if (params.air_duct_enabled !== undefined && this.airDuctEnabled) {
             this.airDuctEnabled.checked = Boolean(params.air_duct_enabled);
+        }
+        if (params.air_duct_simple_mode !== undefined && this.airDuctSimpleMode) {
+            this.airDuctSimpleMode.checked = Boolean(params.air_duct_simple_mode);
         }
     }
 
@@ -427,6 +434,10 @@ class ParameterPanel {
 
         if (this.airDuctEnabled) {
             this.airDuctEnabled.addEventListener("change", triggerChange);
+        }
+
+        if (this.airDuctSimpleMode) {
+            this.airDuctSimpleMode.addEventListener("change", triggerChange);
         }
 
         if (this.togglePreview) {

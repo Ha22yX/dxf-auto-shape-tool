@@ -1906,6 +1906,28 @@ def _air_duct_region_contours(records, total_length, params, region):
     ]
 
 
+def _air_duct_simple_contours(records, total_length, params):
+    if len(records) < 2:
+        return []
+    ordered = _ordered_air_duct_records(records, total_length)
+    endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
+    endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
+    polygon = _air_duct_component_polygon(ordered, endpoint_margin=endpoint_margin)
+    if len(polygon) < 3:
+        return []
+    loops = _expand_air_duct_loops_to_cover_records(
+        [polygon],
+        records,
+        endpoint_radius,
+    )
+    loops = _orient_air_duct_loops(loops)
+    return [
+        {"role": f"outline_{index}", "points": loop}
+        for index, loop in enumerate(loops)
+        if len(loop) >= 3
+    ]
+
+
 def _air_duct_contours(doc, chain, params, placements, kept_items):
     if not getattr(params, "air_duct_enabled", True):
         return []
@@ -1927,12 +1949,17 @@ def _air_duct_contours(doc, chain, params, placements, kept_items):
         record = _air_duct_record(placement, params.circle_radius, None)
         if not record:
             continue
-        region = _air_duct_region_key(placement, axis, params)
+        region = (
+            "simple"
+            if getattr(params, "air_duct_simple_mode", False)
+            else _air_duct_region_key(placement, axis, params)
+        )
         grouped.setdefault(region, []).append(record)
 
     offset = _air_duct_template_offset(doc, chain)
     contours = []
     region_order = [
+        "simple",
         "upper_outer",
         "upper_inner",
         "upper",
@@ -1949,7 +1976,12 @@ def _air_duct_contours(doc, chain, params, placements, kept_items):
         ),
     )
     for region in ordered_regions:
-        for contour in _air_duct_region_contours(grouped[region], total_length, params, region):
+        contour_source = (
+            _air_duct_simple_contours(grouped[region], total_length, params)
+            if region == "simple"
+            else _air_duct_region_contours(grouped[region], total_length, params, region)
+        )
+        for contour in contour_source:
             shifted = [point + offset for point in contour["points"]]
             contours.append({
                 "region": region,
@@ -2422,13 +2454,18 @@ def _air_duct_group_records(doc, chain, params, placements, kept_items):
         record = _air_duct_record(placement, params.circle_radius, None)
         if not record:
             continue
-        region = _air_duct_region_key(placement, axis, params)
+        region = (
+            "simple"
+            if getattr(params, "air_duct_simple_mode", False)
+            else _air_duct_region_key(placement, axis, params)
+        )
         grouped.setdefault(region, []).append(record)
     return grouped, total_length
 
 
 def _ordered_air_duct_regions(grouped):
     region_order = [
+        "simple",
         "upper_outer",
         "upper_inner",
         "upper",

@@ -18,6 +18,7 @@ class CircleParams:
     capsule_axis_gap_above_distance: float = DEFAULT_PARAMS["capsule_axis_gap_above_distance"]
     capsule_axis_gap_below_distance: float = DEFAULT_PARAMS["capsule_axis_gap_below_distance"]
     air_duct_enabled: bool = DEFAULT_PARAMS["air_duct_enabled"]
+    air_duct_simple_mode: bool = DEFAULT_PARAMS["air_duct_simple_mode"]
     air_duct_inlet_distance: float = DEFAULT_PARAMS["air_duct_inlet_distance"]
     air_duct_base_plate_margin: float = DEFAULT_PARAMS["air_duct_base_plate_margin"]
     top_gap_distance: float = DEFAULT_PARAMS["top_gap_distance"]
@@ -56,6 +57,10 @@ class CircleParams:
                 "air_duct_enabled",
                 DEFAULT_PARAMS["air_duct_enabled"],
             )),
+            air_duct_simple_mode=bool(data.get(
+                "air_duct_simple_mode",
+                DEFAULT_PARAMS["air_duct_simple_mode"],
+            )),
             air_duct_inlet_distance=max(0.0, min(300.0, float(data.get(
                 "air_duct_inlet_distance",
                 DEFAULT_PARAMS["air_duct_inlet_distance"],
@@ -81,6 +86,7 @@ class CircleParams:
             "capsule_axis_gap_above_distance": self.capsule_axis_gap_above_distance,
             "capsule_axis_gap_below_distance": self.capsule_axis_gap_below_distance,
             "air_duct_enabled": self.air_duct_enabled,
+            "air_duct_simple_mode": self.air_duct_simple_mode,
             "air_duct_inlet_distance": self.air_duct_inlet_distance,
             "air_duct_base_plate_margin": self.air_duct_base_plate_margin,
             "top_gap_distance": self.top_gap_distance,

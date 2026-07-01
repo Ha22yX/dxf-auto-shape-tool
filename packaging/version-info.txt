@@ -1,0 +1,44 @@
+# UTF-8
+#
+# Windows version-info resource for the built executable.
+# Surfaces in Explorer via Right-click -> Properties -> Details.
+#
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    # filevers and prodvers are a 4-tuple: (major, minor, patch, build)
+    filevers=(1, 0, 1, 0),
+    prodvers=(1, 0, 1, 0),
+    # Contains a bitmask that specifies the valid bits in 'flags'
+    mask=0x3f,
+    # Contains a bitmask that specifies the Boolean attributes of the file.
+    flags=0x0,
+    # The operating system for which this file was designed.
+    OS=0x40004,
+    # The general type of file.
+    fileType=0x1,
+    # The function of the file.
+    subtype=0x0,
+    # The creation date and time stamp.
+    date=(0, 0)
+    ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040904B0',
+        [StringStruct(u'CompanyName', u'常州市如发机械有限公司'),
+        StringStruct(u'Developer', u'Ha22yX'),
+        StringStruct(u'ContactEmail', u'ha22y.xing@gmail.com'),
+        StringStruct(u'UpdateDate', u'2026-07-01'),
+        StringStruct(u'FileVersion', u'1.0.1.0'),
+        StringStruct(u'FileDescription', u'DXF自动图形工具'),
+        StringStruct(u'InternalName', u'DXF自动图形工具'),
+        StringStruct(u'LegalCopyright', u'© 2026 常州市如发机械有限公司. 开发者: Ha22yX'),
+        StringStruct(u'OriginalFilename', u'DXF自动图形工具.exe'),
+        StringStruct(u'ProductVersion', u'v1.0.1'),
+        StringStruct(u'ProductName', u'DXF自动图形工具'),
+        StringStruct(u'Comments', u'开发者: Ha22yX | 更新时间: 2026-07-01 | 联系邮箱: ha22y.xing@gmail.com')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [0x409, 1200])])
+  ]
+)
