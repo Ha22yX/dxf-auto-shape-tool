@@ -183,7 +183,7 @@ class SvgViewer {
             const transform = this._capsuleCompareTransform(geometry);
             const attrs = transform ? ` transform="${transform}"` : "";
             parts.push(`<g class="capsule-template-layer"${attrs}>`);
-            if (capsuleChainPath) {
+            if (capsuleChainPath && !this.airDuctCompareMode) {
                 parts.push(
                     `<path d="${this._escapeAttr(capsuleChainPath)}" fill="none" stroke="#00BFFF" `
                     + `stroke-width="2.2" stroke-opacity="0.95" stroke-linecap="round" `
