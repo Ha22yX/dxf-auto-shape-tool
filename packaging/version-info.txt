@@ -6,8 +6,8 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
     # filevers and prodvers are a 4-tuple: (major, minor, patch, build)
-    filevers=(1, 0, 1, 0),
-    prodvers=(1, 0, 1, 0),
+    filevers=(1, 0, 2, 0),
+    prodvers=(1, 0, 2, 0),
     # Contains a bitmask that specifies the valid bits in 'flags'
     mask=0x3f,
     # Contains a bitmask that specifies the Boolean attributes of the file.
@@ -30,12 +30,12 @@ VSVersionInfo(
         StringStruct(u'Developer', u'Ha22yX'),
         StringStruct(u'ContactEmail', u'ha22y.xing@gmail.com'),
         StringStruct(u'UpdateDate', u'2026-07-01'),
-        StringStruct(u'FileVersion', u'1.0.1.0'),
+        StringStruct(u'FileVersion', u'1.0.2.0'),
         StringStruct(u'FileDescription', u'DXF自动图形工具'),
         StringStruct(u'InternalName', u'DXF自动图形工具'),
-        StringStruct(u'LegalCopyright', u'© 2026 常州市如发机械有限公司. 开发者: Ha22yX'),
-        StringStruct(u'OriginalFilename', u'DXF自动图形工具.exe'),
-        StringStruct(u'ProductVersion', u'v1.0.1'),
+        StringStruct(u'LegalCopyright', u'(c) 2026 常州市如发机械有限公司 | 开发者 Ha22yX'),
+        StringStruct(u'OriginalFilename', u'DXF自动图形工具-v1.0.2.exe'),
+        StringStruct(u'ProductVersion', u'v1.0.2'),
         StringStruct(u'ProductName', u'DXF自动图形工具'),
         StringStruct(u'Comments', u'开发者: Ha22yX | 更新时间: 2026-07-01 | 联系邮箱: ha22y.xing@gmail.com')])
       ]),

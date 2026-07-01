@@ -37,7 +37,8 @@ if errorlevel 1 goto fail
 
 echo.
 echo Build complete:
-echo %PROJECT_ROOT%\dist\DXF Auto Shape Tool EXE was generated.
+echo The versioned executable was generated in:
+echo %PROJECT_ROOT%\dist
 pause
 exit /b 0
 

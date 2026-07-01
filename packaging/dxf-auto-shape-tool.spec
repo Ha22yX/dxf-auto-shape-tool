@@ -1,9 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import re
+
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
 project_root = Path(SPECPATH).parent
+version_file = project_root / 'packaging' / 'version-info.txt'
+version_text = version_file.read_text(encoding='utf-8')
+version_match = re.search(r"StringStruct\(u'ProductVersion', u'([^']+)'\)", version_text)
+app_version = version_match.group(1) if version_match else 'dev'
+
 datas = [(str(project_root / 'frontend'), 'frontend')]
 binaries = []
 hiddenimports = ['uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on']
@@ -33,7 +40,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='DXF自动图形工具',
+    name=f'DXF自动图形工具-{app_version}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -42,7 +49,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     icon=str(project_root / 'frontend' / 'assets' / 'app-icon.ico'),
-    version=str(project_root / 'packaging' / 'version-info.txt'),
+    version=str(version_file),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
