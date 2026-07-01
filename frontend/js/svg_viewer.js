@@ -177,15 +177,20 @@ class SvgViewer {
 
     _generatedGeometryMarkup(geometry) {
         const parts = [];
-        const capsuleChainPath = geometry.capsule_chain_path || "";
+        const backendCapsuleChainPath = geometry.capsule_chain_path || "";
+        const capsuleChainPath = backendCapsuleChainPath || geometry.selected_chain_path || "";
+        const capsuleChainTransform = backendCapsuleChainPath
+            ? ""
+            : this._templateNormalTransform(geometry && geometry.capsule_template_offset);
         const capsules = geometry.capsules || [];
         if (capsuleChainPath || capsules.length) {
             const transform = this._capsuleCompareTransform(geometry);
             const attrs = transform ? ` transform="${transform}"` : "";
             parts.push(`<g class="capsule-template-layer"${attrs}>`);
             if (capsuleChainPath && !this.airDuctCompareMode) {
+                const chainAttrs = capsuleChainTransform ? ` transform="${capsuleChainTransform}"` : "";
                 parts.push(
-                    `<path d="${this._escapeAttr(capsuleChainPath)}" fill="none" stroke="#00BFFF" `
+                    `<path d="${this._escapeAttr(capsuleChainPath)}"${chainAttrs} fill="none" stroke="#00BFFF" `
                     + `stroke-width="2.2" stroke-opacity="0.95" stroke-linecap="round" `
                     + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
                 );
@@ -290,6 +295,16 @@ class SvgViewer {
         }
         const dx = -Number(offsetInfo.x || 0);
         const dy = -Number(offsetInfo.y || 0);
+        if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return "";
+        return `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`;
+    }
+
+    _templateNormalTransform(offsetInfo) {
+        if (!offsetInfo) {
+            return "";
+        }
+        const dx = Number(offsetInfo.x || 0);
+        const dy = Number(offsetInfo.y || 0);
         if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return "";
         return `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`;
     }
@@ -514,6 +529,7 @@ class SvgViewer {
             air_ducts: baseGeometry.air_ducts || [],
             air_duct_template_offset: baseGeometry.air_duct_template_offset || { x: 0, y: 0 },
             capsule_template_offset: capsuleTemplateOffset,
+            selected_chain_path: baseGeometry.selected_chain_path || "",
             capsule_chain_path: baseGeometry.capsule_chain_path || "",
         };
     }
