@@ -121,12 +121,18 @@
 }
 
 #generated-layer.air-duct-compare-original .air-duct-layer,
-#generated-layer.air-duct-compare-original .air-duct-layer path {
+#generated-layer.air-duct-compare-original .air-duct-layer path,
+#generated-layer.air-duct-compare-original .capsule-template-layer,
+#generated-layer.air-duct-compare-original .capsule-template-layer path {
     opacity: 1 !important;
     filter: none !important;
     stroke: #7DD3FC !important;
     stroke-opacity: 0.98 !important;
     fill: none !important;
+}
+
+#generated-layer.air-duct-compare-original .capsule-template-layer path {
+    stroke: #E8E8E8 !important;
 }
 
 #dxf-content [data-handle]:hover {

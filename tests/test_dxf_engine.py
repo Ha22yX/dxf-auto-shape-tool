@@ -910,6 +910,8 @@ def test_preview_returns_capsule_paths_for_each_ray():
 
     assert len(preview["capsules"]) == 2
     assert all("A 2.0 2.0" in capsule["d"] for capsule in preview["capsules"])
+    assert preview["capsule_template_offset"]["x"] < 0
+    assert preview["capsule_chain_path"].startswith("M -")
 
 
 def test_generate_circles_exports_capsule_outline_entities():
@@ -939,6 +941,9 @@ def test_generate_circles_exports_capsule_outline_entities():
     assert sum(1 for entity in generated if entity.dxftype() == "CIRCLE") == 2
     assert sum(1 for entity in generated if entity.dxftype() == "LINE") == 2
     assert sum(1 for entity in generated if entity.dxftype() == "ARC") == 2
+    copied_chain = [entity for entity in generated if entity.dxftype() == "LWPOLYLINE"]
+    assert len(copied_chain) == 1
+    assert min(point[0] for point in copied_chain[0].get_points()) < 0
 
 
 def test_capsule_axis_gap_skips_capsules_but_keeps_circles_in_preview_and_export():

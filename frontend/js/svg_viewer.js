@@ -177,6 +177,30 @@ class SvgViewer {
 
     _generatedGeometryMarkup(geometry) {
         const parts = [];
+        const capsuleChainPath = geometry.capsule_chain_path || "";
+        const capsules = geometry.capsules || [];
+        if (capsuleChainPath || capsules.length) {
+            const transform = this._capsuleCompareTransform(geometry);
+            const attrs = transform ? ` transform="${transform}"` : "";
+            parts.push(`<g class="capsule-template-layer"${attrs}>`);
+            if (capsuleChainPath) {
+                parts.push(
+                    `<path d="${this._escapeAttr(capsuleChainPath)}" fill="none" stroke="#00BFFF" `
+                    + `stroke-width="2.2" stroke-opacity="0.95" stroke-linecap="round" `
+                    + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
+                );
+            }
+            for (const c of capsules) {
+                if (!c || !c.d) continue;
+                parts.push(
+                    `<path d="${this._escapeAttr(c.d)}" fill="none" stroke="#E8E8E8" `
+                    + `stroke-width="1.4" stroke-opacity="0.92" stroke-linecap="round" `
+                    + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
+                );
+            }
+            parts.push("</g>");
+        }
+
         const airDuctBasePlates = geometry.air_duct_base_plates || [];
         const airDucts = geometry.air_ducts || [];
         if (airDuctBasePlates.length || airDucts.length) {
@@ -202,15 +226,6 @@ class SvgViewer {
             parts.push("</g>");
         }
 
-        const capsules = geometry.capsules || [];
-        for (const c of capsules) {
-            if (!c || !c.d) continue;
-            parts.push(
-                `<path d="${this._escapeAttr(c.d)}" fill="none" stroke="#E8E8E8" `
-                + `stroke-width="1.4" stroke-opacity="0.92" stroke-linecap="round" `
-                + `stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>`,
-            );
-        }
         const rays = geometry.rays || [];
         for (const r of rays) {
             parts.push(
@@ -262,12 +277,19 @@ class SvgViewer {
     }
 
     _airDuctCompareTransform(geometry) {
-        if (!this.airDuctCompareMode || !geometry || !geometry.air_duct_template_offset) {
+        return this._templateCompareTransform(geometry && geometry.air_duct_template_offset);
+    }
+
+    _capsuleCompareTransform(geometry) {
+        return this._templateCompareTransform(geometry && geometry.capsule_template_offset);
+    }
+
+    _templateCompareTransform(offsetInfo) {
+        if (!this.airDuctCompareMode || !offsetInfo) {
             return "";
         }
-        const offset = geometry.air_duct_template_offset;
-        const dx = -Number(offset.x || 0);
-        const dy = -Number(offset.y || 0);
+        const dx = -Number(offsetInfo.x || 0);
+        const dy = -Number(offsetInfo.y || 0);
         if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return "";
         return `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`;
     }
@@ -414,6 +436,7 @@ class SvgViewer {
         const spacing = Number(params.circle_spacing || 0) * svgScale;
         const offset = Number(params.ray_offset || 0) * svgScale;
         const capsuleClearance = Math.max(0, Number(params.capsule_clearance_distance || 0)) * svgScale;
+        const capsuleTemplateOffset = baseGeometry.capsule_template_offset || { x: 0, y: 0 };
         const aboveAxisGap = Math.max(0, Number(params.capsule_axis_gap_above_distance || 0)) * svgScale;
         const belowAxisGap = Math.max(0, Number(params.capsule_axis_gap_below_distance || 0)) * svgScale;
         const horizontalAxis = baseGeometry.symmetry_axes && baseGeometry.symmetry_axes.horizontal;
@@ -480,12 +503,18 @@ class SvgViewer {
             horizontalAxisY,
             aboveAxisGap,
             belowAxisGap,
+            capsuleTemplateOffset,
         );
         return {
             rays,
             capsules,
             circles: pruned.kept,
             removed_circles: pruned.removed,
+            air_duct_base_plates: baseGeometry.air_duct_base_plates || [],
+            air_ducts: baseGeometry.air_ducts || [],
+            air_duct_template_offset: baseGeometry.air_duct_template_offset || { x: 0, y: 0 },
+            capsule_template_offset: capsuleTemplateOffset,
+            capsule_chain_path: baseGeometry.capsule_chain_path || "",
         };
     }
 
@@ -539,6 +568,7 @@ class SvgViewer {
         axisY = null,
         aboveAxisGap = 0,
         belowAxisGap = 0,
+        templateOffset = { x: 0, y: 0 },
         axisX = null,
         clearance = 0,
     ) {
@@ -562,12 +592,20 @@ class SvgViewer {
             }
             circles.sort((a, b) => a.circleIndex - b.circleIndex);
             const far = circles[circles.length - 1];
-            capsules.push(this._capsulePathToKeptFarCircle(basis[placementIndex], far, nearDistance, radius));
+            capsules.push(
+                this._capsulePathToKeptFarCircle(
+                    basis[placementIndex],
+                    far,
+                    nearDistance,
+                    radius,
+                    templateOffset,
+                ),
+            );
         }
         return capsules;
     }
 
-    _capsulePathToKeptFarCircle(base, far, nearDistance, radius) {
+    _capsulePathToKeptFarCircle(base, far, nearDistance, radius, templateOffset = { x: 0, y: 0 }) {
         const dx = far.cx - base.x;
         const dy = far.cy - base.y;
         const length = Math.hypot(dx, dy);
@@ -579,17 +617,20 @@ class SvgViewer {
             nearDistance,
             length,
             radius,
+            templateOffset,
         );
     }
 
-    _capsulePathFromRayBasis(base, nx, ny, nearDistance, farDistance, radius) {
+    _capsulePathFromRayBasis(base, nx, ny, nearDistance, farDistance, radius, templateOffset = { x: 0, y: 0 }) {
         if (radius <= 0 || Math.abs(farDistance - nearDistance) <= 1e-6) {
             return null;
         }
-        const nearX = base.x + nx * nearDistance;
-        const nearY = base.y + ny * nearDistance;
-        const farX = base.x + nx * farDistance;
-        const farY = base.y + ny * farDistance;
+        const offsetX = Number(templateOffset.x || 0);
+        const offsetY = Number(templateOffset.y || 0);
+        const nearX = base.x + nx * nearDistance + offsetX;
+        const nearY = base.y + ny * nearDistance + offsetY;
+        const farX = base.x + nx * farDistance + offsetX;
+        const farY = base.y + ny * farDistance + offsetY;
         let dx = farX - nearX;
         let dy = farY - nearY;
         const length = Math.hypot(dx, dy);

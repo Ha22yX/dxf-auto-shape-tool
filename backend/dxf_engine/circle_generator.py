@@ -595,6 +595,23 @@ def _air_duct_template_offset(doc, chain):
     return Vec2(bounds["width"] + gap, 0)
 
 
+def _capsule_template_offset(doc, chain):
+    bounds = _chain_sample_bounds(doc, chain)
+    if not bounds:
+        return Vec2(0, 0)
+    gap = max(bounds["width"] * 0.35, bounds["height"] * 0.08, 100.0)
+    return Vec2(-(bounds["width"] + gap), 0)
+
+
+def _shift_capsule(capsule, offset):
+    if not offset or offset.magnitude <= POINT_TOLERANCE:
+        return capsule
+    shifted = dict(capsule)
+    shifted["near"] = capsule["near"] + offset
+    shifted["far"] = capsule["far"] + offset
+    return shifted
+
+
 def _air_duct_region_key(placement, axis, params):
     if not axis:
         return "all"
@@ -2897,6 +2914,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         kept_items,
     )
     air_duct_template_offset = _air_duct_template_offset(doc, chain)
+    capsule_template_offset = _capsule_template_offset(doc, chain)
 
     circles = []
     removed_circles = []
@@ -2936,7 +2954,13 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
                 kept_by_placement.get(placement_index, []),
             )
             if capsule:
-                capsules.append({"d": _capsule_svg_path(capsule, bounds, scale)})
+                capsules.append({
+                    "d": _capsule_svg_path(
+                        _shift_capsule(capsule, capsule_template_offset),
+                        bounds,
+                        scale,
+                    )
+                })
     for item in kept_items:
         c = item["center"]
         cx, cy = _to_svg(c.x, c.y, bounds, scale)
@@ -2959,6 +2983,7 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         rays.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
 
     chain_path = _chain_path_d(doc, chain, closed, bounds, scale)
+    capsule_chain_path = _chain_path_d(doc, chain, closed, bounds, scale, capsule_template_offset)
     apex_marker = None
     total = geom.chain_length(doc, chain)
     apex_sample = (
@@ -2981,9 +3006,14 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
             "x": air_duct_template_offset.x * scale,
             "y": -air_duct_template_offset.y * scale,
         },
+        "capsule_template_offset": {
+            "x": capsule_template_offset.x * scale,
+            "y": -capsule_template_offset.y * scale,
+        },
         "basis": basis,
         "scale": scale,
         "selected_chain_path": chain_path,
+        "capsule_chain_path": capsule_chain_path,
         "apex_marker": apex_marker,
         "symmetry_axis": _symmetry_axis_overlay(doc, chain, bounds, scale),
         "symmetry_axes": _symmetry_axes_overlay(doc, chain, bounds, scale),
@@ -3002,7 +3032,14 @@ def _to_svg(x: float, y: float, bounds: dict, scale: float):
     return sx, sy
 
 
-def _chain_path_d(doc, chain: List[str], closed: bool, bounds: dict, scale: float) -> str:
+def _chain_path_d(
+    doc,
+    chain: List[str],
+    closed: bool,
+    bounds: dict,
+    scale: float,
+    offset: Vec2 | None = None,
+) -> str:
     """Build an SVG path 'd' for the selected chain in SVG output units."""
     if not chain:
         return ""
@@ -3019,14 +3056,34 @@ def _chain_path_d(doc, chain: List[str], closed: bool, bounds: dict, scale: floa
     if not samples:
         return ""
 
+    offset = offset or Vec2(0, 0)
     parts = []
     for i, s in enumerate(samples):
-        sx, sy = _to_svg(s.point.x, s.point.y, bounds, scale)
+        point = s.point + offset
+        sx, sy = _to_svg(point.x, point.y, bounds, scale)
         cmd = "M" if i == 0 else "L"
         parts.append(f"{cmd} {sx:.1f} {sy:.1f}")
     if closed:
         parts.append("Z")
     return " ".join(parts)
+
+
+def _add_chain_copy_entity(msp, doc, chain: List[str], closed: bool, offset: Vec2):
+    if not chain or offset.magnitude <= POINT_TOLERANCE:
+        return None
+    total = geom.chain_length(doc, chain)
+    if total <= 1e-9:
+        return None
+    count = max(64, min(4000, int(total / 2.0)))
+    samples = geom.sample_chain(doc, chain, count, closed=closed)
+    if len(samples) < 2:
+        return None
+    points = [(sample.point.x + offset.x, sample.point.y + offset.y) for sample in samples]
+    return msp.add_lwpolyline(
+        points,
+        close=closed,
+        dxfattribs={"layer": GENERATED_LAYER},
+    ).dxf.handle
 
 
 def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams,
@@ -3043,6 +3100,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
     axis = _chain_axis(doc, chain)
+    capsule_template_offset = _capsule_template_offset(doc, chain)
     air_duct_contours = _air_duct_contours(doc, chain, params, placements, kept_items)
     air_duct_base_plate_contours = _air_duct_base_plate_contours(
         doc,
@@ -3056,6 +3114,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
     if GENERATED_LAYER not in doc.layers:
         doc.layers.add(GENERATED_LAYER)
     circle_handles = []
+    _add_chain_copy_entity(msp, doc, chain, closed, capsule_template_offset)
 
     for item in kept_items:
         center = item["center"]
@@ -3075,7 +3134,7 @@ def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: Circ
             kept_by_placement.get(placement_index, []),
         )
         if capsule:
-            _add_capsule_entities(msp, capsule)
+            _add_capsule_entities(msp, _shift_capsule(capsule, capsule_template_offset))
     _add_air_duct_base_plate_entities(msp, doc, air_duct_base_plate_contours)
     _add_air_duct_entities(msp, doc, air_duct_contours)
 
