@@ -27,7 +27,7 @@ class CircleParams:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CircleParams":
-        ray_offset = float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"]))
+        ray_offset = max(0.1, float(data.get("ray_offset", DEFAULT_PARAMS["ray_offset"])))
         capsule_start_distance = float(data.get(
             "capsule_start_distance",
             DEFAULT_PARAMS["capsule_start_distance"],
@@ -56,10 +56,10 @@ class CircleParams:
                 "air_duct_enabled",
                 DEFAULT_PARAMS["air_duct_enabled"],
             )),
-            air_duct_inlet_distance=max(0.0, float(data.get(
+            air_duct_inlet_distance=max(0.0, min(300.0, float(data.get(
                 "air_duct_inlet_distance",
                 DEFAULT_PARAMS["air_duct_inlet_distance"],
-            ))),
+            )))),
             air_duct_base_plate_margin=max(0.0, float(data.get(
                 "air_duct_base_plate_margin",
                 DEFAULT_PARAMS["air_duct_base_plate_margin"],

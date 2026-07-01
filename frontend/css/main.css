@@ -98,7 +98,7 @@ body {
 }
 
 .panel-section {
-    width: 300px;
+    width: 330px;
     background: #1e1e1e;
     border-left: 1px solid #333;
     display: flex;
@@ -149,6 +149,66 @@ body {
     font-size: 12px;
     color: #aaa;
     margin-bottom: 6px;
+}
+
+.param-label {
+    position: relative;
+    width: fit-content;
+    max-width: 100%;
+    cursor: help;
+}
+
+.param-label::after {
+    content: "?";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: 6px;
+    border: 1px solid #4b5961;
+    border-radius: 50%;
+    color: #8fa1ac;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.param-label::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    right: 0;
+    top: calc(100% + 7px);
+    z-index: 60;
+    width: 238px;
+    padding: 9px 10px;
+    border: 1px solid #3d4a50;
+    border-radius: 6px;
+    background: #111719;
+    color: #d7e0e5;
+    font-size: 12px;
+    line-height: 1.5;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-3px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.param-label:hover,
+.param-label:focus-visible {
+    color: #dce9ef;
+}
+
+.param-label:hover::before,
+.param-label:focus-visible::before {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.param-label:hover::after,
+.param-label:focus-visible::after {
+    border-color: #00BFFF;
+    color: #00BFFF;
 }
 
 .form-group input,

@@ -7,8 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="/static/assets/app-icon.svg?v=20260630-icon">
     <link rel="alternate icon" type="image/x-icon" href="/static/assets/app-icon.ico?v=20260630-icon">
     <link rel="apple-touch-icon" href="/static/assets/app-icon.png?v=20260630-icon">
-    <link rel="stylesheet" href="/static/css/main.css?v=20260701-capsule-overlay">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260701-capsule-overlay">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260701-param-names">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260701-param-names">
 </head>
 <body>
     <div class="app">
@@ -46,11 +46,62 @@
                     <h2>参数设置</h2>
 
                     <section class="param-section">
-                        <h3>圆圈</h3>
+                        <h3>生成范围</h3>
+
+                    <div class="form-group slider-group" data-param="ray_count">
+                        <div class="slider-header">
+                            <label class="param-label" data-tooltip="沿所选轮廓生成多少组圆孔和对应长条。数量越多，排布越密，计算也会更慢。">圆孔组数量</label>
+                            <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
+                        </div>
+                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
+                        <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="param-label" for="param-ray-direction" data-tooltip="控制射线朝所选闭合轮廓的内部或外部生成。冲浪板吸附台通常使用向内。">生成方向</label>
+                        <select id="param-ray-direction">
+                            <option value="inward" selected>向内</option>
+                            <option value="outward">向外</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="ray_offset">
+                        <div class="slider-header">
+                            <label class="param-label" data-tooltip="控制圆孔组从轮廓边向内生成的最远距离，必须大于 0；圆孔、长条和导风槽都基于这段距离生成。">圆孔向内距离</label>
+                            <div class="input-with-unit">
+                                <input type="text" inputmode="decimal" id="param-ray-offset" value="75" data-step="0.5" data-min="0.1" data-max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-ray-offset-slider" min="0.1" max="500" step="0.5" value="75">
+                        <div class="slider-hints"><span>0.1</span><span>250</span><span>500</span></div>
+                    </div>
+
+                    <div class="form-group slider-group" data-param="top_gap_distance">
+                        <div class="slider-header">
+                            <label class="param-label" data-tooltip="从顶部顶点沿左右两侧留出的空白距离，这段不生成射线，用来避开尖头并保持左右对称。">顶点留空距离</label>
+                            <div class="input-with-unit">
+                                <input type="text" inputmode="decimal" id="param-top-gap-distance" value="40" data-step="0.5" data-min="0" data-max="99999">
+                                <span class="unit-label">mm</span>
+                            </div>
+                        </div>
+                        <input type="range" id="param-top-gap-distance-slider" min="0" max="200" step="0.5" value="40">
+                        <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="param-label" for="param-dedupe-closed-rays" data-tooltip="当所选线接近闭合时，避免首尾端点重复生成两条射线。设置顶点留空距离后通常不需要依赖它。">闭合端点去重</label>
+                        <input type="checkbox" id="param-dedupe-closed-rays" checked>
+                    </div>
+
+                    </section>
+
+                    <section class="param-section">
+                        <h3>圆孔</h3>
 
                     <div class="form-group slider-group" data-param="circle_radius">
                         <div class="slider-header">
-                            <label>圆圈半径</label>
+                            <label class="param-label" data-tooltip="导风圆孔的半径，也是长条胶囊宽度和部分导风槽宽度计算的基础。">圆孔半径</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-circle-radius" value="3.5" data-step="0.1" data-min="0.1" data-max="9999">
                                 <span class="unit-label">mm</span>
@@ -62,7 +113,7 @@
 
                     <div class="form-group slider-group" data-param="circles_per_ray">
                         <div class="slider-header">
-                            <label>每射线圆数</label>
+                            <label class="param-label" data-tooltip="每条射线上生成几个圆孔。设置为 0 时只保留射线和其他可生成图形。">每条射线圆孔数</label>
                             <input type="text" inputmode="numeric" id="param-circles-per-ray" value="3" data-step="1" data-min="0" data-max="10">
                         </div>
                         <input type="range" id="param-circles-per-ray-slider" min="0" max="10" step="1" value="3">
@@ -71,7 +122,7 @@
 
                     <div class="form-group slider-group" data-param="circle_spacing">
                         <div class="slider-header">
-                            <label>圆间距</label>
+                            <label class="param-label" data-tooltip="同一条射线上相邻圆孔中心之间的距离。数值越大，圆孔越分散。">圆孔间距</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-circle-spacing" value="17.5" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -84,50 +135,11 @@
                     </section>
 
                     <section class="param-section">
-                        <h3>射线</h3>
-
-                    <div class="form-group slider-group" data-param="ray_offset">
-                        <div class="slider-header">
-                            <label>射线整体偏移</label>
-                            <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-ray-offset" value="75" data-step="0.5" data-min="-99999" data-max="99999">
-                                <span class="unit-label">mm</span>
-                            </div>
-                        </div>
-                        <input type="range" id="param-ray-offset-slider" min="-500" max="500" step="0.5" value="75">
-                        <div class="slider-hints"><span>-500</span><span>0</span><span>500</span></div>
-                    </div>
-
-                    <div class="form-group slider-group" data-param="ray_count">
-                        <div class="slider-header">
-                            <label>射线数量</label>
-                            <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
-                        </div>
-                        <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
-                        <div class="slider-hints"><span>0</span><span>250</span><span>500</span></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="param-ray-direction">射线方向</label>
-                        <select id="param-ray-direction">
-                            <option value="inward" selected>向内</option>
-                            <option value="outward">向外</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group toggle-group">
-                        <label for="param-dedupe-closed-rays">闭合端点射线去重</label>
-                        <input type="checkbox" id="param-dedupe-closed-rays" checked>
-                    </div>
-
-                    </section>
-
-                    <section class="param-section">
-                        <h3>长条与间隔</h3>
+                        <h3>长条胶囊</h3>
 
                     <div class="form-group slider-group" data-param="capsule_start_distance">
                         <div class="slider-header">
-                            <label>长条起点距离</label>
+                            <label class="param-label" data-tooltip="长条靠近轮廓边的一端距离射线起点的距离。这个值越大，长条越远离所选外边。">长条起点距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-start-distance" value="10" data-step="0.5" data-min="0.1" data-max="75">
                                 <span class="unit-label">mm</span>
@@ -139,7 +151,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_clearance_distance">
                         <div class="slider-header">
-                            <label>胶囊安全间距</label>
+                            <label class="param-label" data-tooltip="不同圆孔组互相靠近时，按这个最小间距自动减少外侧圆孔和长条长度，避免圆孔或长条重叠太近。">圆孔安全间距</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-clearance-distance" value="2" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -151,7 +163,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_axis_gap_above_distance">
                         <div class="slider-header">
-                            <label>水平轴上方无长条距离</label>
+                            <label class="param-label" data-tooltip="以水平对称轴为基准，向上这段距离内不生成长条胶囊，但圆孔仍会保留。用于把导风槽分成独立区域。">上方无长条区</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-axis-gap-above-distance" value="0" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -163,7 +175,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_axis_gap_below_distance">
                         <div class="slider-header">
-                            <label>水平轴下方无长条距离</label>
+                            <label class="param-label" data-tooltip="以水平对称轴为基准，向下这段距离内不生成长条胶囊，但圆孔仍会保留。上方和下方可以分别设置。">下方无长条区</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-axis-gap-below-distance" value="0" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -173,43 +185,31 @@
                         <div class="slider-hints"><span>0</span><span>1000</span><span>2000</span></div>
                     </div>
 
-                    <div class="form-group slider-group" data-param="top_gap_distance">
-                        <div class="slider-header">
-                            <label>顶部间隔</label>
-                            <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-top-gap-distance" value="40" data-step="0.5" data-min="0" data-max="99999">
-                                <span class="unit-label">mm</span>
-                            </div>
-                        </div>
-                        <input type="range" id="param-top-gap-distance-slider" min="0" max="200" step="0.5" value="40">
-                        <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
-                    </div>
-
                     </section>
 
                     <section class="param-section">
-                        <h3>导风槽</h3>
+                        <h3>导风槽与底板</h3>
 
                     <div class="form-group toggle-group">
-                        <label for="param-air-duct-enabled">显示/导出导风槽</label>
+                        <label class="param-label" for="param-air-duct-enabled" data-tooltip="开启后生成右侧导风槽和底板；保存 DXF 时也会把导风槽模板一起导出。">生成导风槽</label>
                         <input type="checkbox" id="param-air-duct-enabled" checked>
                     </div>
 
                     <div class="form-group slider-group" data-param="air_duct_inlet_distance">
                         <div class="slider-header">
-                            <label>横向吸风口距离</label>
+                            <label class="param-label" data-tooltip="控制横向吸风口相对导风槽分区靠近水平对称轴一侧的偏移距离，用来连接左右导风槽。">横向吸风口偏移</label>
                             <div class="input-with-unit">
-                                <input type="text" inputmode="decimal" id="param-air-duct-inlet-distance" value="20" data-step="0.5" data-min="0" data-max="99999">
+                                <input type="text" inputmode="decimal" id="param-air-duct-inlet-distance" value="20" data-step="0.5" data-min="0" data-max="300">
                                 <span class="unit-label">mm</span>
                             </div>
                         </div>
-                        <input type="range" id="param-air-duct-inlet-distance-slider" min="0" max="200" step="0.5" value="20">
-                        <div class="slider-hints"><span>0</span><span>100</span><span>200</span></div>
+                        <input type="range" id="param-air-duct-inlet-distance-slider" min="0" max="300" step="0.5" value="20">
+                        <div class="slider-hints"><span>0</span><span>150</span><span>300</span></div>
                     </div>
 
                     <div class="form-group slider-group" data-param="air_duct_base_plate_margin">
                         <div class="slider-header">
-                            <label>底板外扩距离</label>
+                            <label class="param-label" data-tooltip="在导风槽最外层边的基础上向外扩展的距离，生成用于加工导风槽的底板外轮廓。">底板外扩距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-air-duct-base-plate-margin" value="20" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -222,15 +222,15 @@
                     </section>
 
                     <section class="param-section">
-                        <h3>显示</h3>
+                        <h3>预览显示</h3>
 
                     <div class="form-group toggle-group">
-                        <label for="toggle-preview">显示生成图</label>
+                        <label class="param-label" for="toggle-preview" data-tooltip="控制是否显示圆孔、长条、导风槽等生成结果。关闭后只看导入和选中的轮廓。">显示生成结果</label>
                         <input type="checkbox" id="toggle-preview" checked>
                     </div>
 
                     <div class="form-group toggle-group">
-                        <label for="toggle-air-duct-compare-overlay">叠加按钮</label>
+                        <label class="param-label" for="toggle-air-duct-compare-overlay" data-tooltip="把左侧长条副图和右侧导风槽副图叠加回主图位置，方便检查对位；不会影响导出时三张图的独立位置。">叠加对位查看</label>
                         <input type="checkbox" id="toggle-air-duct-compare-overlay">
                     </div>
 
@@ -256,11 +256,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260701-capsule-overlay"></script>
-    <script src="/static/js/websocket.js?v=20260701-capsule-overlay"></script>
-    <script src="/static/js/svg_viewer.js?v=20260701-capsule-overlay"></script>
-    <script src="/static/js/selector.js?v=20260701-capsule-overlay"></script>
-    <script src="/static/js/parameter_panel.js?v=20260701-capsule-overlay"></script>
-    <script src="/static/js/app.js?v=20260701-capsule-overlay"></script>
+    <script src="/static/js/api.js?v=20260701-param-names"></script>
+    <script src="/static/js/websocket.js?v=20260701-param-names"></script>
+    <script src="/static/js/svg_viewer.js?v=20260701-param-names"></script>
+    <script src="/static/js/selector.js?v=20260701-param-names"></script>
+    <script src="/static/js/parameter_panel.js?v=20260701-param-names"></script>
+    <script src="/static/js/app.js?v=20260701-param-names"></script>
 </body>
 </html>

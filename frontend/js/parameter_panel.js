@@ -34,9 +34,9 @@ class ParameterPanel {
                 decimals: 1,
             },
             ray_offset: {
-                min: -99999,
+                min: 0.1,
                 max: 99999,
-                sliderMin: -500,
+                sliderMin: 0.1,
                 sliderMax: 500,
                 step: 0.5,
                 decimals: 1,
@@ -75,9 +75,9 @@ class ParameterPanel {
             },
             air_duct_inlet_distance: {
                 min: 0,
-                max: 99999,
+                max: 300,
                 sliderMin: 0,
-                sliderMax: 200,
+                sliderMax: 300,
                 step: 0.5,
                 decimals: 1,
             },

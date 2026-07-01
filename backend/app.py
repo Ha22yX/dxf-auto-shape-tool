@@ -57,21 +57,21 @@ def _service_log(message: str):
 
 
 PARAM_LOG_LABELS = {
-    "circle_radius": "圆圈半径",
-    "circles_per_ray": "每射线圆数",
-    "circle_spacing": "圆间距",
-    "ray_offset": "射线整体偏移",
+    "circle_radius": "圆孔半径",
+    "circles_per_ray": "每条射线圆孔数",
+    "circle_spacing": "圆孔间距",
+    "ray_offset": "圆孔向内距离",
     "capsule_start_distance": "长条起点距离",
-    "capsule_clearance_distance": "胶囊安全间距",
-    "capsule_axis_gap_above_distance": "水平轴上方无长条距离",
-    "capsule_axis_gap_below_distance": "水平轴下方无长条距离",
-    "air_duct_enabled": "导风槽显示/导出",
-    "air_duct_inlet_distance": "导风槽横向吸风口距离",
-    "air_duct_base_plate_margin": "导风槽底板外扩距离",
-    "top_gap_distance": "顶部间隔",
-    "ray_count": "射线数量",
-    "ray_direction": "射线方向",
-    "dedupe_closed_rays": "闭合端点射线去重",
+    "capsule_clearance_distance": "圆孔安全间距",
+    "capsule_axis_gap_above_distance": "上方无长条区",
+    "capsule_axis_gap_below_distance": "下方无长条区",
+    "air_duct_enabled": "生成导风槽",
+    "air_duct_inlet_distance": "横向吸风口偏移",
+    "air_duct_base_plate_margin": "底板外扩距离",
+    "top_gap_distance": "顶点留空距离",
+    "ray_count": "圆孔组数量",
+    "ray_direction": "生成方向",
+    "dedupe_closed_rays": "闭合端点去重",
 }
 
 
