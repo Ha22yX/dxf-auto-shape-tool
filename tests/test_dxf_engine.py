@@ -1959,6 +1959,7 @@ def test_air_duct_simple_mode_bridges_apex_gap():
     ]
 
     assert points
+    assert len(contours) == 2
     assert max(point.y for point in points) > 82.0
     assert any(
         abs(point.x) <= 3.0

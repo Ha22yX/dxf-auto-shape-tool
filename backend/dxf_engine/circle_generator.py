@@ -2033,22 +2033,26 @@ def _air_duct_region_contours(records, total_length, params, region):
     ]
 
 
+def _air_duct_simple_ordered_records(records, total_length, params):
+    ordered = _ordered_air_duct_records(records, total_length)
+    return _bridge_air_duct_end_gap_records(ordered, "simple", params)
+
+
+def _air_duct_simple_boundary_loops(records, total_length, params):
+    ordered = _air_duct_simple_ordered_records(records, total_length, params)
+    outer_curve, inner_curve = _air_duct_component_curves(ordered, endpoint_margin=0.0)
+    loops = []
+    for curve in (outer_curve, inner_curve):
+        loop = _dedupe_air_duct_points(curve)
+        if len(loop) >= 3 and abs(_polygon_signed_area(loop)) > POINT_TOLERANCE:
+            loops.append(loop)
+    return _orient_air_duct_loops(loops)
+
+
 def _air_duct_simple_contours(records, total_length, params):
     if len(records) < 2:
         return []
-    ordered = _ordered_air_duct_records(records, total_length)
-    ordered = _bridge_air_duct_end_gap_records(ordered, "simple", params)
-    endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
-    endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
-    polygon = _air_duct_component_polygon(ordered, endpoint_margin=endpoint_margin)
-    if len(polygon) < 3:
-        return []
-    loops = _expand_air_duct_loops_to_cover_records(
-        [polygon],
-        records,
-        endpoint_radius,
-    )
-    loops = _orient_air_duct_loops(loops)
+    loops = _air_duct_simple_boundary_loops(records, total_length, params)
     return [
         {"role": f"outline_{index}", "points": loop}
         for index, loop in enumerate(loops)
@@ -2122,6 +2126,8 @@ def _air_duct_contours(doc, chain, params, placements, kept_items):
 def _air_duct_component_polygons_for_region(records, total_length, params, region):
     if len(records) < 2:
         return []
+    if region == "simple":
+        return _air_duct_simple_boundary_loops(records, total_length, params)
     split_disconnected = region.endswith("_inner")
     components = _split_air_duct_components(records, total_length, split_disconnected)
     components = _bridge_air_duct_components_end_gaps(components, region, params)
