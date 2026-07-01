@@ -24,7 +24,7 @@ DEFAULT_PARAMS = {
     "capsule_axis_gap_above_distance": 0.0,
     "capsule_axis_gap_below_distance": 0.0,
     "air_duct_enabled": True,
-    "air_duct_simple_mode": False,
+    "air_duct_simple_mode": True,
     "air_duct_inlet_distance": 20.0,
     "air_duct_base_plate_margin": 20.0,
     "top_gap_distance": 40.0,

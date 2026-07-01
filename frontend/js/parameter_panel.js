@@ -317,7 +317,7 @@ class ParameterPanel {
                 : true,
             air_duct_simple_mode: this.airDuctSimpleMode
                 ? this.airDuctSimpleMode.checked
-                : false,
+                : true,
             air_duct_inlet_distance: this._normalizeInputValue(
                 "air_duct_inlet_distance",
                 parse("air_duct_inlet_distance", 20),

@@ -1211,6 +1211,7 @@ def test_air_duct_contours_cover_kept_circles_after_pruning():
         ray_count=18,
         top_gap_distance=0.0,
         air_duct_enabled=True,
+        air_duct_simple_mode=False,
     )
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
     kept_items, removed_items = circle_generator._overlap_pruned_circle_items(
@@ -1257,6 +1258,7 @@ def test_air_duct_default_split_keeps_upper_and_lower_regions_separate():
         capsule_axis_gap_above_distance=0.0,
         capsule_axis_gap_below_distance=0.0,
         air_duct_enabled=True,
+        air_duct_simple_mode=False,
     )
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
     kept_items, _ = circle_generator._overlap_pruned_circle_items(
@@ -1758,6 +1760,7 @@ def test_air_duct_base_plates_share_axis_gap_split_edges_without_overlap():
         capsule_axis_gap_above_distance=18.0,
         capsule_axis_gap_below_distance=18.0,
         air_duct_enabled=True,
+        air_duct_simple_mode=False,
         air_duct_base_plate_margin=8.0,
     )
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
@@ -1921,7 +1924,7 @@ def test_air_duct_end_gap_bridges_top_gap_smoothly():
     assert max(point.y for point in polygon) > 82.0
 
 
-def test_air_duct_simple_mode_bridges_apex_gap():
+def test_air_duct_simple_mode_does_not_add_apex_tab():
     records = []
     source_points = [
         (18.0, 82.0),
@@ -1961,7 +1964,7 @@ def test_air_duct_simple_mode_bridges_apex_gap():
     assert points
     assert len(contours) == 2
     assert max(point.y for point in points) > 82.0
-    assert any(
+    assert not any(
         abs(point.x) <= 3.0
         for point in points
         if point.y > 82.0
@@ -2111,6 +2114,7 @@ def test_air_duct_axis_gap_splits_into_four_independent_regions():
         capsule_axis_gap_above_distance=18.0,
         capsule_axis_gap_below_distance=18.0,
         air_duct_enabled=True,
+        air_duct_simple_mode=False,
     )
     placements = circle_generator.compute_placements(doc, handles, params, closed=True)
     kept_items, _ = circle_generator._overlap_pruned_circle_items(

@@ -2034,8 +2034,9 @@ def _air_duct_region_contours(records, total_length, params, region):
 
 
 def _air_duct_simple_ordered_records(records, total_length, params):
-    ordered = _ordered_air_duct_records(records, total_length)
-    return _bridge_air_duct_end_gap_records(ordered, "simple", params)
+    # Simple mode only removes internal regions and inlet slots. It must not
+    # add its own endpoint bridge because that changes the shared outer outline.
+    return _ordered_air_duct_records(records, total_length)
 
 
 def _air_duct_simple_boundary_loops(records, total_length, params):
