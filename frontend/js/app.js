@@ -17,6 +17,7 @@ const App = {
         this._bindParameters();
         this._bindActions();
         this._bindStatus();
+        this._bindVersion();
     },
 
     _bindUpload() {
@@ -155,6 +156,27 @@ const App = {
 
     _bindStatus() {
         document.getElementById("status-session").textContent = "未连接会话";
+    },
+
+    async _bindVersion() {
+        const currentEl = document.getElementById("current-version");
+        const updateLink = document.getElementById("version-update-link");
+        if (!currentEl || !updateLink) return;
+
+        try {
+            const status = await API.getVersion();
+            currentEl.textContent = `当前版本 ${status.current_version || "--"}`;
+            if (status.update_available && status.latest_version) {
+                updateLink.textContent = `发现新版本 ${status.latest_version}`;
+                updateLink.href = status.latest_release_url || status.release_url;
+                updateLink.hidden = false;
+            } else {
+                updateLink.hidden = true;
+            }
+        } catch (err) {
+            console.warn("Version check failed", err);
+            updateLink.hidden = true;
+        }
     },
 
     _handleWsMessage(msg) {

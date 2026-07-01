@@ -25,12 +25,15 @@ import webbrowser
 from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
+from backend.version import GITHUB_RELEASES_URL, get_current_version, get_version_status
+
 
 APP_TITLE = "DXF自动图形工具"
 DEFAULT_PORT = int(os.environ.get("PORT", "8000"))
 SERVICE_HOST = "0.0.0.0"
 LOG_BUFFER_LINES = 2000
 LOG_RENDER_LINES = 600
+APP_VERSION = get_current_version()
 
 
 def _app_dir() -> Path:
@@ -258,6 +261,7 @@ class LauncherApp:
         self.log_window: tk.Toplevel | None = None
         self.log_text: scrolledtext.ScrolledText | None = None
         self.lan_ip = _lan_ip()
+        self.release_url = GITHUB_RELEASES_URL
 
         self.root.title(APP_TITLE)
         _set_window_icon(self.root)
@@ -266,6 +270,7 @@ class LauncherApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self._build_ui()
+        self._start_update_check()
         self._set_status(False, "未运行")
         self.root.after(200, self._drain_logs)
         self.root.after(500, self._poll_process)
@@ -286,6 +291,7 @@ class LauncherApp:
         main = tk.Frame(self.root, padx=22, pady=18)
         main.grid(row=0, column=0, sticky="nsew")
         main.columnconfigure(0, weight=1)
+        main.columnconfigure(1, weight=0)
 
         title = tk.Label(
             main,
@@ -295,8 +301,25 @@ class LauncherApp:
         )
         title.grid(row=0, column=0, sticky="ew")
 
+        version_row = tk.Frame(main)
+        version_row.grid(row=0, column=1, sticky="e", padx=(12, 0))
+        self.version_label = tk.Label(
+            version_row,
+            text=f"当前版本 {APP_VERSION}",
+            font=("Microsoft YaHei UI", 9),
+            fg="#555555",
+        )
+        self.version_label.pack(side="left")
+        self.update_button = tk.Button(
+            version_row,
+            text="发现新版本",
+            command=self.open_release,
+            height=1,
+            padx=8,
+        )
+
         status_row = tk.Frame(main)
-        status_row.grid(row=1, column=0, sticky="ew", pady=(18, 8))
+        status_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(18, 8))
         self.status_dot = tk.Canvas(status_row, width=16, height=16, highlightthickness=0)
         self.status_dot.pack(side="left")
         self.status_circle = self.status_dot.create_oval(3, 3, 13, 13, fill="#c62828", outline="")
@@ -304,7 +327,7 @@ class LauncherApp:
         self.status_label.pack(side="left", padx=(8, 0))
 
         urls = tk.LabelFrame(main, text="访问网址", padx=12, pady=10)
-        urls.grid(row=2, column=0, sticky="ew", pady=(8, 14))
+        urls.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 14))
         urls.columnconfigure(1, weight=1)
 
         tk.Label(urls, text="本机访问：").grid(row=0, column=0, sticky="w", pady=3)
@@ -323,10 +346,10 @@ class LauncherApp:
             fg="#555555",
             anchor="w",
         )
-        hint.grid(row=3, column=0, sticky="ew", pady=(0, 14))
+        hint.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 14))
 
         buttons = tk.Frame(main)
-        buttons.grid(row=4, column=0, sticky="ew")
+        buttons.grid(row=4, column=0, columnspan=2, sticky="ew")
         for i in range(4):
             buttons.columnconfigure(i, weight=1)
 
@@ -441,6 +464,31 @@ class LauncherApp:
 
     def open_web(self) -> None:
         webbrowser.open(self.local_url)
+
+    def open_release(self) -> None:
+        webbrowser.open(self.release_url)
+
+    def _start_update_check(self) -> None:
+        threading.Thread(target=self._check_update_worker, daemon=True).start()
+
+    def _check_update_worker(self) -> None:
+        status = get_version_status()
+        self.root.after(0, lambda: self._apply_version_status(status))
+
+    def _apply_version_status(self, status: dict) -> None:
+        current_version = status.get("current_version") or APP_VERSION
+        self.version_label.configure(text=f"当前版本 {current_version}")
+        self.release_url = (
+            status.get("latest_release_url")
+            or status.get("release_url")
+            or GITHUB_RELEASES_URL
+        )
+        if status.get("update_available") and status.get("latest_version"):
+            self.update_button.configure(text=f"发现新版本 {status.get('latest_version')}")
+            if not self.update_button.winfo_ismapped():
+                self.update_button.pack(side="left", padx=(8, 0))
+        elif self.update_button.winfo_ismapped():
+            self.update_button.pack_forget()
 
     def open_logs(self) -> None:
         if self.log_window and self.log_window.winfo_exists():

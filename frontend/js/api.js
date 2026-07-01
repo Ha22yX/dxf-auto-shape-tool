@@ -18,6 +18,14 @@ const API = {
         return res.json();
     },
 
+    async getVersion() {
+        const res = await fetch(`${this.baseUrl}/api/version`, {
+            cache: "no-store",
+        });
+        if (!res.ok) throw new Error("获取版本信息失败");
+        return res.json();
+    },
+
     async getSvg(sessionId, generated = true) {
         const res = await fetch(
             `${this.baseUrl}/api/session/${sessionId}/svg?generated=${generated}`,

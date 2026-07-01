@@ -11,7 +11,10 @@ version_text = version_file.read_text(encoding='utf-8')
 version_match = re.search(r"StringStruct\(u'ProductVersion', u'([^']+)'\)", version_text)
 app_version = version_match.group(1) if version_match else 'dev'
 
-datas = [(str(project_root / 'frontend'), 'frontend')]
+datas = [
+    (str(project_root / 'frontend'), 'frontend'),
+    (str(version_file), 'packaging'),
+]
 binaries = []
 hiddenimports = ['uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on']
 hiddenimports += collect_submodules('backend')

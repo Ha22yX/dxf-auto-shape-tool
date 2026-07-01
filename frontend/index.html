@@ -7,14 +7,18 @@
     <link rel="icon" type="image/svg+xml" href="/static/assets/app-icon.svg?v=20260630-icon">
     <link rel="alternate icon" type="image/x-icon" href="/static/assets/app-icon.ico?v=20260630-icon">
     <link rel="apple-touch-icon" href="/static/assets/app-icon.png?v=20260630-icon">
-    <link rel="stylesheet" href="/static/css/main.css?v=20260701-simple-air-duct">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260701-simple-air-duct">
+    <link rel="stylesheet" href="/static/css/main.css?v=20260701-version-check">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20260701-version-check">
 </head>
 <body>
     <div class="app">
         <header class="app-header">
             <h1>DXF 自动图形工具</h1>
             <div class="header-actions">
+                <div id="version-status" class="version-status" aria-live="polite">
+                    <span id="current-version">当前版本 --</span>
+                    <a id="version-update-link" href="https://github.com/Ha22yX/dxf-auto-shape-tool/releases" target="_blank" rel="noopener" hidden>发现新版本</a>
+                </div>
                 <input type="file" id="file-input" accept=".dxf" hidden>
                 <button id="upload-btn" class="btn btn-primary">上传 DXF</button>
             </div>
@@ -261,11 +265,11 @@
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260701-simple-air-duct"></script>
-    <script src="/static/js/websocket.js?v=20260701-simple-air-duct"></script>
-    <script src="/static/js/svg_viewer.js?v=20260701-simple-air-duct"></script>
-    <script src="/static/js/selector.js?v=20260701-simple-air-duct"></script>
-    <script src="/static/js/parameter_panel.js?v=20260701-simple-air-duct"></script>
-    <script src="/static/js/app.js?v=20260701-simple-air-duct"></script>
+    <script src="/static/js/api.js?v=20260701-version-check"></script>
+    <script src="/static/js/websocket.js?v=20260701-version-check"></script>
+    <script src="/static/js/svg_viewer.js?v=20260701-version-check"></script>
+    <script src="/static/js/selector.js?v=20260701-version-check"></script>
+    <script src="/static/js/parameter_panel.js?v=20260701-version-check"></script>
+    <script src="/static/js/app.js?v=20260701-version-check"></script>
 </body>
 </html>

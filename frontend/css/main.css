@@ -81,7 +81,32 @@ body {
 
 .header-actions {
     display: flex;
+    align-items: center;
     gap: 10px;
+}
+
+.version-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #343434;
+    border-radius: 4px;
+    background: #242424;
+    color: #aeb7bc;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.version-status a {
+    color: #7fd87f;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.version-status a:hover {
+    text-decoration: underline;
 }
 
 .app-main {

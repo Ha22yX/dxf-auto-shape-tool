@@ -10,6 +10,7 @@ import io
 from urllib.parse import quote
 
 from backend.config import BASE_DIR, TEMP_DIR, GENERATED_LAYER
+from backend.version import get_version_status
 from backend.state import (
     SessionState,
     CircleParams,
@@ -107,6 +108,11 @@ async def root():
             headers={"Cache-Control": "no-store, max-age=0"},
         )
     return {"message": "DXF 自动图形工具后端已启动"}
+
+
+@app.get("/api/version")
+async def version_status():
+    return await asyncio.to_thread(get_version_status)
 
 
 @app.post("/api/upload")
