@@ -1921,6 +1921,52 @@ def test_air_duct_end_gap_bridges_top_gap_smoothly():
     assert max(point.y for point in polygon) > 82.0
 
 
+def test_air_duct_simple_mode_bridges_apex_gap():
+    records = []
+    source_points = [
+        (18.0, 82.0),
+        (42.0, 54.0),
+        (50.0, 12.0),
+        (-50.0, 12.0),
+        (-42.0, 54.0),
+        (-18.0, 82.0),
+    ]
+    for index, (x, y) in enumerate(source_points):
+        near = Vec2(x, y)
+        far = Vec2(x * 0.55, y - 28.0)
+        records.append({
+            "near": near,
+            "far": far,
+            "near_center": near,
+            "far_center": far,
+            "circle_centers": [near, far],
+            "radius": 2.0,
+            "width": (far - near).magnitude,
+            "source_distance": float(index * 20),
+            "source_point": near,
+        })
+
+    params = CircleParams(circle_radius=2.0, air_duct_simple_mode=True)
+    contours = circle_generator._air_duct_simple_contours(
+        records,
+        total_length=180.0,
+        params=params,
+    )
+    points = [
+        point
+        for contour in contours
+        for point in contour["points"]
+    ]
+
+    assert points
+    assert max(point.y for point in points) > 82.0
+    assert any(
+        abs(point.x) <= 3.0
+        for point in points
+        if point.y > 82.0
+    )
+
+
 def test_air_duct_base_plate_samples_are_symmetric_for_tip_gaps():
     component = [
         Vec2(-70.0, 0.0),

@@ -1575,7 +1575,8 @@ def _bridge_air_duct_end_gap_records(records, region, params):
         return records
     if region.endswith("_inner"):
         return records
-    if not (region.startswith("upper") or region.startswith("lower")):
+    is_simple = region == "simple"
+    if not is_simple and not (region.startswith("upper") or region.startswith("lower")):
         return records
 
     points = [record["source_point"] for record in records]
@@ -1602,10 +1603,19 @@ def _bridge_air_duct_end_gap_records(records, region, params):
         if min(first.y, last.y) < max(ys) - endpoint_band:
             return records
         direction = 1.0
-    else:
+    elif region.startswith("lower"):
         if max(first.y, last.y) > min(ys) + endpoint_band:
             return records
         direction = -1.0
+    else:
+        endpoints_at_top = min(first.y, last.y) >= max(ys) - endpoint_band
+        endpoints_at_bottom = max(first.y, last.y) <= min(ys) + endpoint_band
+        if endpoints_at_top:
+            direction = 1.0
+        elif endpoints_at_bottom:
+            direction = -1.0
+        else:
+            return records
 
     gap_width = abs(first.x - last.x)
     bridge_height = max(gap_width * 0.35, average_width * 1.25, radius * 6.0, 1.0)
@@ -2027,6 +2037,7 @@ def _air_duct_simple_contours(records, total_length, params):
     if len(records) < 2:
         return []
     ordered = _ordered_air_duct_records(records, total_length)
+    ordered = _bridge_air_duct_end_gap_records(ordered, "simple", params)
     endpoint_radius = max(0.0, getattr(params, "circle_radius", 0.0))
     endpoint_margin = endpoint_radius + _air_duct_envelope_margin(endpoint_radius)
     polygon = _air_duct_component_polygon(ordered, endpoint_margin=endpoint_margin)
