@@ -21,9 +21,28 @@
   <img src=".github/assets/readme-hero.svg" alt="Surfboard Vacuum Table DXF Generator overview image" width="100%" />
 </p>
 
+<p align="center">
+  <img src="docs/assets/Pic.png" alt="Surfboard vacuum table DXF generator interface screenshot" width="100%" />
+</p>
+
 ## Why This Exists
 
-Manual DXF editing is slow and error-prone when suction geometry must follow a curved board edge. This tool turns an outline selection into repeatable machining geometry.
+Manual DXF editing is slow and error-prone when suction holes and capsule slots must follow a curved board edge. This tool turns an outline selection into repeatable machining geometry.
+
+## Workflow
+
+- Upload a surfboard outline DXF.
+- Select one or more target edges in the browser preview.
+- Tune ray, hole, slot, gap, symmetry, and no-slot parameters.
+- Preview generated geometry while keeping guide elements separate.
+- Export only real machining geometry to a new DXF.
+
+## Features
+
+- Upload and preview surfboard outline DXF files.
+- Generate rays, suction holes, and capsule slots from selected edges.
+- Symmetry helpers, no-slot zones, overlap removal, and preview guides.
+- Windows launcher path and PyInstaller packaging materials.
 
 ## Quickstart
 
@@ -36,23 +55,26 @@ python main.py
 
 On Windows, `scripts/windows/start-manager-hidden.vbs` launches the local service manager.
 
-## Features
-
-- Upload and preview surfboard outline DXF files.
-- Select target edges, then generate rays, suction holes, and capsule slots.
-- Symmetry helpers, no-slot zones, overlap removal, and preview-only guide geometry.
-- Export clean DXF machining geometry for downstream fabrication.
-
 ## Tech Stack
 
 | Layer | Technology | Role |
 | --- | --- | --- |
 | Backend | FastAPI, Python | DXF processing and local web service. |
-| Geometry | ezdxf, custom geometry helpers | Load outlines and generate machining entities. |
+| Geometry | ezdxf, custom helpers | Load outlines and generate machining entities. |
 | Frontend | HTML, CSS, JavaScript, SVG | Interactive preview and parameter panel. |
 | Packaging | Windows scripts / PyInstaller spec | Local launcher and executable path. |
 
+## Project Map
 
-## Project Notes
+```text
+backend/                 FastAPI service and DXF engine
+frontend/                browser UI and SVG viewer
+scripts/windows/         local service launchers
+packaging/               PyInstaller spec and build script
+docs/assets/Pic.png      README interface screenshot
+tests/                   geometry, DXF, click, and websocket tests
+```
+
+## Notes
 
 This is a practical manufacturing helper for a specific surfboard vacuum-table workflow, not a general-purpose CAD package.

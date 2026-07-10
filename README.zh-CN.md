@@ -21,9 +21,28 @@
   <img src=".github/assets/readme-hero.svg" alt="Surfboard Vacuum Table DXF Generator 项目概览图" width="100%" />
 </p>
 
+<p align="center">
+  <img src="docs/assets/Pic.png" alt="DXF 自动生成工具界面截图" width="100%" />
+</p>
+
 ## 项目价值
 
-当吸孔和槽位需要沿着曲线板边生成时，手工编辑 DXF 很慢且容易出错。本工具把轮廓选择转换成可重复的加工几何。
+当吸孔和胶囊槽需要沿着曲线板边生成时，手工编辑 DXF 很慢且容易出错。本工具把轮廓选择转换成可重复的加工几何。
+
+## 工作流
+
+- 上传冲浪板轮廓 DXF。
+- 在浏览器预览中选择一个或多个目标边。
+- 调节射线、孔、槽、间隙、对称和禁槽参数。
+- 预览生成几何，同时把辅助元素与真实加工几何分开。
+- 只把真实加工几何导出为新的 DXF。
+
+## 核心功能
+
+- 上传并预览冲浪板轮廓 DXF。
+- 从选中的边生成射线、吸孔和胶囊槽。
+- 对称辅助、禁槽区域、重叠孔移除和预览辅助线。
+- Windows 启动器路径和 PyInstaller 打包材料。
 
 ## 快速开始
 
@@ -36,22 +55,25 @@ python main.py
 
 在 Windows 上，`scripts/windows/start-manager-hidden.vbs` 可启动本地服务管理器。
 
-## 核心功能
-
-- 上传并预览冲浪板轮廓 DXF。
-- 选择目标边后生成射线、吸孔和胶囊槽。
-- 提供对称辅助、禁槽区域、重叠孔移除和仅预览辅助几何。
-- 导出干净的 DXF 加工几何，供后续制造使用。
-
 ## 技术栈
 
-| Layer | Technology | Role |
+| 层级 | 技术 | 作用 |
 | --- | --- | --- |
 | 后端 | FastAPI, Python | DXF 处理和本地 Web 服务。 |
-| 几何 | ezdxf, custom geometry helpers | 读取轮廓并生成加工实体。 |
+| 几何 | ezdxf, custom helpers | 读取轮廓并生成加工实体。 |
 | 前端 | HTML, CSS, JavaScript, SVG | 交互预览和参数面板。 |
 | 打包 | Windows scripts / PyInstaller spec | 本地启动器和可执行文件路径。 |
 
+## 项目结构
+
+```text
+backend/                 FastAPI service and DXF engine
+frontend/                browser UI and SVG viewer
+scripts/windows/         local service launchers
+packaging/               PyInstaller spec and build script
+docs/assets/Pic.png      README interface screenshot
+tests/                   geometry, DXF, click, and websocket tests
+```
 
 ## 项目说明
 
