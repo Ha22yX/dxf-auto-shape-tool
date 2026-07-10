@@ -1,0 +1,65 @@
+  <svg width="1120" height="420" viewBox="0 0 1120 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+    <title id="title">Surfboard Vacuum Table DXF Generator overview</title>
+    <desc id="desc">A simple overview diagram for the repository README.</desc>
+    <defs>
+      <filter id="shadow" x="-10%" y="-20%" width="120%" height="150%">
+        <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#10231d" flood-opacity=".10"/>
+      </filter>
+      <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fbfff9"/>
+        <stop offset="1" stop-color="#eef6f0"/>
+      </linearGradient>
+      <style>
+        .title { font: 700 27px Inter, Segoe UI, Arial, sans-serif; fill: #f8fffb; }
+        .subtitle { font: 500 14px Inter, Segoe UI, Arial, sans-serif; fill: #cfe2da; }
+        .small { font: 600 13px Inter, Segoe UI, Arial, sans-serif; }
+        .tiny { font: 500 12px Inter, Segoe UI, Arial, sans-serif; }
+        .metric { font: 800 31px Inter, Segoe UI, Arial, sans-serif; }
+        .cardTitle { font: 700 17px Inter, Segoe UI, Arial, sans-serif; fill: #0b1512; }
+        .cardText { font: 500 13px Inter, Segoe UI, Arial, sans-serif; fill: #53615d; }
+      </style>
+    </defs>
+
+    <rect x="16" y="14" width="1088" height="392" rx="32" fill="url(#panel)"/>
+    <path d="M16 330 C190 265 330 330 498 292 C682 251 801 204 1104 265 L1104 406 L16 406 Z" fill="#deece5" opacity=".82"/>
+    <path d="M70 82 C190 48 340 42 473 74 C612 108 743 92 864 56 C934 35 1016 38 1066 62" stroke="#e6d7cd" stroke-width="2" opacity=".65"/>
+
+    <rect x="84" y="56" width="952" height="300" rx="24" fill="#fffdfa" stroke="#d9e5de" filter="url(#shadow)"/>
+    <rect x="108" y="82" width="238" height="248" rx="18" fill="#10231d"/>
+    <rect x="134" y="112" width="50" height="50" rx="14" fill="#eaf6ef"/>
+    <path d="M147 128 h24 v16 h-24 z" stroke="#247a68" stroke-width="3" fill="none" rx="2"/>
+    <path d="M147 128 l12 9 l12 -9" stroke="#247a68" stroke-width="3" fill="none"/>
+    <text x="134" y="190" class="title">DXF Workbench</text>
+    <text x="134" y="216" class="subtitle">Outline to toolpath</text>
+    <rect x="134" y="250" width="146" height="42" rx="12" fill="#287866"/>
+    <text x="163" y="277" class="small" fill="#ffffff">Generate</text>
+
+<rect x="372" y="86" width="174" height="80" rx="16" fill="#fffdfa" stroke="#287866" stroke-opacity=".28"/>
+<circle cx="406" cy="126" r="18" fill="#287866" fill-opacity=".13"/>
+<text x="436" y="120" class="small" fill="#53615d">Outline</text>
+<text x="436" y="146" class="metric" fill="#0b1512">DXF</text>
+<rect x="590" y="86" width="174" height="80" rx="16" fill="#fffdfa" stroke="#7477bb" stroke-opacity=".28"/>
+<circle cx="624" cy="126" r="18" fill="#7477bb" fill-opacity=".13"/>
+<text x="654" y="120" class="small" fill="#53615d">Holes</text>
+<text x="654" y="146" class="metric" fill="#0b1512">Auto</text>
+<rect x="808" y="86" width="174" height="80" rx="16" fill="#fffdfa" stroke="#e28b66" stroke-opacity=".28"/>
+<circle cx="842" cy="126" r="18" fill="#e28b66" fill-opacity=".13"/>
+<text x="872" y="120" class="small" fill="#53615d">Slots</text>
+<text x="872" y="146" class="metric" fill="#0b1512">Capsule</text>
+
+    <path d="M520 186 C556 222 618 222 650 190" stroke="#7477bb" stroke-width="3" stroke-dasharray="8 10" opacity=".85"/>
+    <path d="M838 188 C820 230 784 250 740 250" stroke="#7477bb" stroke-width="3" stroke-dasharray="8 10" opacity=".85"/>
+
+    <rect x="372" y="220" width="324" height="86" rx="16" fill="#fbfffc" stroke="#d9e5de"/>
+    <circle cx="402" cy="263" r="5" fill="#287866"/>
+    <text x="422" y="253" class="cardTitle">Selected edge</text>
+    <text x="422" y="279" class="cardText">Create rays and spacing</text>
+    <path d="M696 263 H758" stroke="#287866" stroke-width="4"/>
+    <path d="M747 251 L759 263 L747 275" stroke="#287866" stroke-width="4" fill="none"/>
+
+    <rect x="776" y="220" width="232" height="86" rx="16" fill="#fbfffc" stroke="#d9e5de"/>
+    <text x="798" y="253" class="cardTitle">Export DXF</text>
+    <text x="798" y="279" class="cardText">Machining geometry</text>
+    <rect x="372" y="326" width="270" height="16" rx="8" fill="#dbe8e0"/>
+    <rect x="132" y="306" width="108" height="16" rx="8" fill="#81958d"/>
+  </svg>
