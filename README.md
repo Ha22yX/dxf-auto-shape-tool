@@ -7,6 +7,8 @@
     &middot;
     <a href="#quickstart">Quickstart</a>
     &middot;
+    <a href="#features">Features</a>
+    &middot;
     <a href="#tech-stack">Tech Stack</a>
   </p>
 
@@ -25,26 +27,30 @@
   <img src="docs/assets/Pic.png" alt="Surfboard vacuum table DXF generator interface screenshot" width="100%" />
 </p>
 
-## Why This Exists
+## Overview
 
-Manual DXF editing is slow and error-prone when suction holes and capsule slots must follow a curved board edge. This tool turns an outline selection into repeatable machining geometry.
+Manual DXF editing is slow and error-prone when suction holes and capsule slots must follow a curved board edge.
 
-## Workflow
-
-- Upload a surfboard outline DXF.
-- Select one or more target edges in the browser preview.
-- Tune ray, hole, slot, gap, symmetry, and no-slot parameters.
-- Preview generated geometry while keeping guide elements separate.
-- Export only real machining geometry to a new DXF.
+This tool turns an outline selection into repeatable machining geometry with preview guides and export controls.
 
 ## Features
 
 - Upload and preview surfboard outline DXF files.
 - Generate rays, suction holes, and capsule slots from selected edges.
-- Symmetry helpers, no-slot zones, overlap removal, and preview guides.
-- Windows launcher path and PyInstaller packaging materials.
+- Tune ray, hole, slot, gap, symmetry, and no-slot parameters.
+- Separate preview guides from real machining geometry.
+- Windows launcher and packaging materials for local shop use.
+
+## How It Works
+
+1. Upload a DXF outline.
+2. Select target edges in the browser preview.
+3. Adjust generation parameters and preview the result.
+4. Export a new DXF containing only machining geometry.
 
 ## Quickstart
+
+Run the project locally with the commands below.
 
 ```bash
 git clone https://github.com/Ha22yX/dxf-auto-shape-tool.git
@@ -55,6 +61,15 @@ python main.py
 
 On Windows, `scripts/windows/start-manager-hidden.vbs` launches the local service manager.
 
+## Configuration
+
+| Item | Purpose |
+| --- | --- |
+| Input DXF | Use clean outlines and verify selected edges before export. |
+| Geometry parameters | Adjust hole/slot spacing, symmetry, and no-slot zones for the fixture. |
+| Export | Inspect generated DXF in CAD/CAM software before machining. |
+| Packaging | Use Windows scripts/PyInstaller materials for local workstation deployment. |
+
 ## Tech Stack
 
 | Layer | Technology | Role |
@@ -62,9 +77,9 @@ On Windows, `scripts/windows/start-manager-hidden.vbs` launches the local servic
 | Backend | FastAPI, Python | DXF processing and local web service. |
 | Geometry | ezdxf, custom helpers | Load outlines and generate machining entities. |
 | Frontend | HTML, CSS, JavaScript, SVG | Interactive preview and parameter panel. |
-| Packaging | Windows scripts / PyInstaller spec | Local launcher and executable path. |
+| Packaging | Windows scripts / PyInstaller | Local launcher and executable path. |
 
-## Project Map
+## Project Layout
 
 ```text
 backend/                 FastAPI service and DXF engine
@@ -75,6 +90,10 @@ docs/assets/Pic.png      README interface screenshot
 tests/                   geometry, DXF, click, and websocket tests
 ```
 
-## Notes
+## Status
 
-This is a practical manufacturing helper for a specific surfboard vacuum-table workflow, not a general-purpose CAD package.
+Practical manufacturing helper for a specific surfboard vacuum-table workflow, not a general-purpose CAD package.
+
+## License
+
+No project-wide open-source license has been declared yet.
