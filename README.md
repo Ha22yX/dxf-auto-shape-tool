@@ -10,6 +10,8 @@ The intended workflow is simple: import a surfboard outline DXF, select the edge
 
 Rufa website: [http://rufajx.com/](http://rufajx.com/)
 
+Online demo: [http://server.rosebeg.com:8000/](http://server.rosebeg.com:8000/)
+
 ## Key Features
 
 - Upload and preview surfboard outline DXF files in the browser.

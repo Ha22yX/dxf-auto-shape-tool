@@ -10,6 +10,8 @@
 
 Rufa 公司网址：[http://rufajx.com/](http://rufajx.com/)
 
+在线 Demo：[http://server.rosebeg.com:8000/](http://server.rosebeg.com:8000/)
+
 ## 主要能力
 
 - 上传冲浪板外形 DXF，并在浏览器中预览。
