@@ -82,7 +82,26 @@ body {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+}
+
+.language-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #aeb7bc;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.language-select {
+    min-width: 92px;
+    padding: 5px 24px 5px 8px;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    background: #242424;
+    color: #e8e8e8;
+    font-size: 12px;
 }
 
 .version-status {
@@ -129,11 +148,13 @@ body {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: visible;
 }
 
 .panel-card {
     padding: 16px;
     border-bottom: 1px solid #333;
+    overflow: visible;
 }
 
 .panel-card h2,
@@ -150,6 +171,7 @@ body {
     background: #202020;
     padding: 12px 12px 4px;
     margin-bottom: 12px;
+    overflow: visible;
 }
 
 .param-section h3 {
@@ -203,7 +225,7 @@ body {
     position: absolute;
     left: 0;
     top: calc(100% + 7px);
-    z-index: 1000;
+    z-index: 5000;
     width: min(238px, calc(100vw - 32px));
     padding: 9px 10px;
     border: 1px solid #3d4a50;

@@ -4,6 +4,11 @@
 const API = {
     baseUrl: "",
 
+    _t(key) {
+        if (window.I18N) return window.I18N.t(key);
+        return key;
+    },
+
     async upload(file) {
         const formData = new FormData();
         formData.append("file", file);
@@ -13,7 +18,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "上传失败");
+            throw new Error(err.detail || this._t("error.upload"));
         }
         return res.json();
     },
@@ -22,7 +27,7 @@ const API = {
         const res = await fetch(`${this.baseUrl}/api/version`, {
             cache: "no-store",
         });
-        if (!res.ok) throw new Error("获取版本信息失败");
+        if (!res.ok) throw new Error(this._t("error.version"));
         return res.json();
     },
 
@@ -30,7 +35,7 @@ const API = {
         const res = await fetch(
             `${this.baseUrl}/api/session/${sessionId}/svg?generated=${generated}`,
         );
-        if (!res.ok) throw new Error("获取 SVG 失败");
+        if (!res.ok) throw new Error(this._t("error.svg"));
         return res.text();
     },
 
@@ -42,7 +47,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "选择失败");
+            throw new Error(err.detail || this._t("error.select"));
         }
         return res.json();
     },
@@ -56,7 +61,7 @@ const API = {
                 body: JSON.stringify({ show_generated: showGenerated }),
             },
         );
-        if (!res.ok) throw new Error("切换预览失败");
+        if (!res.ok) throw new Error(this._t("error.toggle"));
         return res.json();
     },
 
@@ -68,7 +73,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "参数同步失败");
+            throw new Error(err.detail || this._t("error.params"));
         }
         return res.json();
     },
@@ -79,7 +84,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "下载失败");
+            throw new Error(err.detail || this._t("error.download"));
         }
         return res.blob();
     },

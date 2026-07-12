@@ -18,7 +18,7 @@ GITHUB_LATEST_RELEASE_API = (
 )
 VERSION_INFO_PATH = BASE_DIR / "packaging" / "version-info.txt"
 VERSION_CHECK_CACHE_SECONDS = 15 * 60
-CURRENT_VERSION_FALLBACK = "v1.0.2"
+CURRENT_VERSION_FALLBACK = "v1.0.3"
 
 _version_cache: dict[str, Any] | None = None
 _version_cache_time = 0.0

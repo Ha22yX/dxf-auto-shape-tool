@@ -1,5 +1,7 @@
 """2D geometry helpers for DXF edge processing."""
+import bisect
 import math
+import weakref
 from dataclasses import dataclass
 from typing import Tuple, List, Callable, Optional
 from ezdxf.math import Vec2, Vec3, bulge_to_arc
@@ -491,7 +493,20 @@ class SamplePoint:
     distance: float = 0.0
 
 
+_CHAIN_SEGMENT_CACHE = weakref.WeakKeyDictionary()
+
+
 def _build_segments(doc, chain: List[str]) -> List["_Segment"]:
+    cache_key = tuple(chain)
+    try:
+        cache = _CHAIN_SEGMENT_CACHE.setdefault(doc, {})
+    except TypeError:
+        cache = None
+    if cache is not None:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
     groups = []
     for handle in chain:
         entity = doc.entitydb.get(handle)
@@ -500,7 +515,10 @@ def _build_segments(doc, chain: List[str]) -> List["_Segment"]:
         pts_data = _get_parametrization(entity)
         if pts_data:
             groups.append(pts_data)
-    return _orient_segment_groups(groups)
+    segments = _orient_segment_groups(groups)
+    if cache is not None:
+        cache[cache_key] = segments
+    return segments
 
 
 def _cumulative_lengths(segments: List["_Segment"]) -> List[float]:
@@ -810,14 +828,8 @@ def _raw_sample_at_distance(segments: List["_Segment"], cum_lengths: List[float]
                             target: float, total: float) -> Tuple[Vec2, Vec2, Vec2, "_Segment", float]:
     """Helper to sample a point at a given distance along segments."""
     target = max(0.0, min(total, target))
-
-    idx = 0
-    for i in range(1, len(cum_lengths)):
-        if cum_lengths[i] >= target:
-            idx = i - 1
-            break
-    else:
-        idx = len(segments) - 1
+    idx = bisect.bisect_left(cum_lengths, target, 1) - 1
+    idx = max(0, min(idx, len(segments) - 1))
 
     seg = segments[idx]
     seg_start = cum_lengths[idx]

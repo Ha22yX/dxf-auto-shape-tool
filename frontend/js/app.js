@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Main application orchestration.
  *
  * Upload returns the accurate base SVG (rendered once). Parameter/selection
@@ -10,14 +10,44 @@ const App = {
     bounds: null,
     scale: 1,
     previewLoadingReasons: new Set(),
+    previewLoadingLabels: new Map(),
+    chainInfo: { segment_count: 0, total_length: 0 },
+    generatedCount: 0,
+    currentCoords: null,
+    versionStatus: null,
 
     init() {
+        this._bindLanguage();
         this._bindUpload();
         this._bindViewer();
         this._bindParameters();
         this._bindActions();
         this._bindStatus();
         this._bindVersion();
+    },
+
+    _bindLanguage() {
+        if (!window.I18N) return;
+
+        const language = window.I18N.init();
+        const select = document.getElementById("language-select");
+        if (select) {
+            select.value = language;
+            select.addEventListener("change", () => {
+                window.I18N.setLanguage(select.value);
+            });
+        }
+
+        window.addEventListener("i18n:change", () => {
+            this._renderStatus();
+            this._renderVersionStatus();
+            this._refreshLoadingText();
+        });
+    },
+
+    _t(key, values = {}) {
+        if (window.I18N) return window.I18N.t(key, values);
+        return key;
     },
 
     _bindUpload() {
@@ -49,7 +79,7 @@ const App = {
 
                 wsClient.connect(this.sessionId);
                 wsClient.onMessage = (msg) => this._handleWsMessage(msg);
-                wsClient.onError = () => this._showError("WebSocket 连接失败");
+                wsClient.onError = () => this._showError(this._t("error.websocket"));
 
                 this._updateStatus(result);
                 this._setLoading(false);
@@ -66,7 +96,7 @@ const App = {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
             if (wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol, evt.hoverHandle)) {
-                this._showPreviewLoading("选择中...", "selection");
+                this._showPreviewLoadingKey("loading.selecting", "selection");
             }
         };
 
@@ -74,8 +104,8 @@ const App = {
             if (this.bounds) {
                 const wcsX = pt.x / this.scale + this.bounds.min[0];
                 const wcsY = this.bounds.max[1] - pt.y / this.scale;
-                document.getElementById("status-coords").textContent =
-                    `坐标: ${wcsX.toFixed(1)}, ${wcsY.toFixed(1)}`;
+                this.currentCoords = { x: wcsX, y: wcsY };
+                this._renderStatus();
             }
         };
 
@@ -89,7 +119,7 @@ const App = {
 
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;
-            this._showPreviewLoading("计算中...", "params");
+            this._showPreviewLoadingKey("loading.params", "params");
             wsClient.sendParams(params);
         };
 
@@ -118,12 +148,15 @@ const App = {
             const saveBtn = document.getElementById("save-btn");
             try {
                 saveBtn.disabled = true;
-                this._showPreviewLoading("保存中...", "save");
+                this._showPreviewLoadingKey("loading.saving", "save");
                 const synced = await API.updateParams(this.sessionId, parameterPanel.getParams());
                 if (synced.preview_geometry) {
                     svgViewer.setOverlay(synced.preview_geometry, parameterPanel.getShowGenerated());
                     if (synced.chain_info) {
                         this._updateStatus({ chain_info: synced.chain_info });
+                    }
+                    if (synced.generated_count !== undefined) {
+                        this._updateStatus({ generated_count: synced.generated_count });
                     }
                 }
                 const blob = await API.download(this.sessionId);
@@ -136,7 +169,7 @@ const App = {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             } catch (err) {
-                this._showError(err.message || "下载失败");
+                this._showError(err.message || this._t("error.download"));
             } finally {
                 this._hidePreviewLoading("save");
                 saveBtn.disabled = false;
@@ -147,15 +180,14 @@ const App = {
             .getElementById("clear-selection-btn")
             .addEventListener("click", () => {
                 if (!this.sessionId) return;
-                // Ask backend to clear selection by sending an explicit clear message.
                 if (wsClient.send("clear_selection", {})) {
-                    this._showPreviewLoading("清除中...", "selection");
+                    this._showPreviewLoadingKey("loading.clearing", "selection");
                 }
             });
     },
 
     _bindStatus() {
-        document.getElementById("status-session").textContent = "未连接会话";
+        this._renderStatus();
     },
 
     async _bindVersion() {
@@ -164,17 +196,35 @@ const App = {
         if (!currentEl || !updateLink) return;
 
         try {
-            const status = await API.getVersion();
-            currentEl.textContent = `当前版本 ${status.current_version || "--"}`;
-            if (status.update_available && status.latest_version) {
-                updateLink.textContent = `发现新版本 ${status.latest_version}`;
-                updateLink.href = status.latest_release_url || status.release_url;
-                updateLink.hidden = false;
-            } else {
-                updateLink.hidden = true;
-            }
+            this.versionStatus = await API.getVersion();
         } catch (err) {
             console.warn("Version check failed", err);
+            this.versionStatus = {
+                current_version: "--",
+                update_available: false,
+                latest_release_url: "https://github.com/Ha22yX/dxf-auto-shape-tool/releases",
+            };
+        }
+        this._renderVersionStatus();
+    },
+
+    _renderVersionStatus() {
+        const currentEl = document.getElementById("current-version");
+        const updateLink = document.getElementById("version-update-link");
+        if (!currentEl || !updateLink) return;
+
+        const status = this.versionStatus || {};
+        currentEl.textContent = this._t("version.current", {
+            version: status.current_version || "--",
+        });
+
+        if (status.update_available && status.latest_version) {
+            updateLink.textContent = this._t("version.update", {
+                version: status.latest_version,
+            });
+            updateLink.href = status.latest_release_url || status.release_url;
+            updateLink.hidden = false;
+        } else {
             updateLink.hidden = true;
         }
     },
@@ -190,22 +240,18 @@ const App = {
             }
             this._hidePreviewLoading("selection");
 
-            if (data.chain_info) {
-                this._updateStatus({ chain_info: data.chain_info });
-            }
-            if (data.generated_count !== undefined) {
-                document.getElementById(
-                    "status-generated",
-                ).textContent = `生成圆: ${data.generated_count}`;
-            }
+            this._updateStatus({
+                chain_info: data.chain_info,
+                generated_count: data.generated_count,
+            });
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
             svgViewer.clearHover();
             this._hidePreviewLoading("selection");
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
+                generated_count: 0,
             });
-            document.getElementById("status-generated").textContent = "生成圆: 0";
         } else if (msg.type === "hover_result") {
             if (data.request_id !== undefined && data.request_id !== svgViewer._hoverRequestId) {
                 return;
@@ -221,49 +267,99 @@ const App = {
             return;
         } else if (msg.type === "error") {
             this._hidePreviewLoading();
-            this._showError(data.message || "发生错误");
+            this._showError(data.message || this._t("error.generic"));
         }
     },
 
-    _updateStatus(result) {
+    _updateStatus(result = {}) {
         if (result.session_id) {
-            document.getElementById(
-                "status-session",
-            ).textContent = `会话: ${result.session_id.slice(0, 8)}`;
+            this.sessionId = result.session_id;
         }
         if (result.chain_info) {
-            const info = result.chain_info;
-            document.getElementById(
-                "status-selection",
-            ).textContent = `已选边: ${info.segment_count} | 总长: ${info.total_length}`;
+            this.chainInfo = result.chain_info;
+        }
+        if (result.generated_count !== undefined) {
+            this.generatedCount = result.generated_count;
+        }
+        this._renderStatus();
+    },
+
+    _renderStatus() {
+        const sessionEl = document.getElementById("status-session");
+        const selectionEl = document.getElementById("status-selection");
+        const generatedEl = document.getElementById("status-generated");
+        const coordsEl = document.getElementById("status-coords");
+
+        if (sessionEl) {
+            sessionEl.textContent = this.sessionId
+                ? this._t("status.session", { id: this.sessionId.slice(0, 8) })
+                : this._t("status.noSession");
+        }
+        if (selectionEl) {
+            const info = this.chainInfo || { segment_count: 0, total_length: 0 };
+            selectionEl.textContent = this._t("status.selection", {
+                count: info.segment_count || 0,
+                length: info.total_length || 0,
+            });
+        }
+        if (generatedEl) {
+            generatedEl.textContent = this._t("status.generated", {
+                count: this.generatedCount || 0,
+            });
+        }
+        if (coordsEl) {
+            coordsEl.textContent = this.currentCoords
+                ? this._t("status.coords", {
+                    x: this.currentCoords.x.toFixed(1),
+                    y: this.currentCoords.y.toFixed(1),
+                })
+                : this._t("status.coordsEmpty");
         }
     },
 
     _setLoading(show) {
         if (show) {
-            this._showPreviewLoading("加载中...", "global");
+            this._showPreviewLoadingKey("loading.upload", "global");
         } else {
             this._hidePreviewLoading("global");
         }
     },
 
-    _showPreviewLoading(text = "计算中...", reason = "global") {
+    _showPreviewLoadingKey(key, reason = "global") {
+        this._showPreviewLoading(this._t(key), reason, key);
+    },
+
+    _showPreviewLoading(text = null, reason = "global", key = null) {
         this.previewLoadingReasons.add(reason);
+        if (key) this.previewLoadingLabels.set(reason, key);
         const overlay = this._ensurePreviewLoading();
         const label = document.getElementById("preview-loading-text");
-        if (label) label.textContent = text;
+        if (label) label.textContent = text || this._t("loading.default");
         if (overlay) overlay.classList.add("is-visible");
     },
 
     _hidePreviewLoading(reason = null) {
         if (reason) {
             this.previewLoadingReasons.delete(reason);
+            this.previewLoadingLabels.delete(reason);
         } else {
             this.previewLoadingReasons.clear();
+            this.previewLoadingLabels.clear();
         }
-        if (this.previewLoadingReasons.size > 0) return;
+        if (this.previewLoadingReasons.size > 0) {
+            this._refreshLoadingText();
+            return;
+        }
         const overlay = document.getElementById("preview-loading");
         if (overlay) overlay.classList.remove("is-visible");
+    },
+
+    _refreshLoadingText() {
+        const label = document.getElementById("preview-loading-text");
+        if (!label || this.previewLoadingReasons.size === 0) return;
+        const reasons = Array.from(this.previewLoadingReasons);
+        const key = this.previewLoadingLabels.get(reasons[reasons.length - 1]);
+        label.textContent = key ? this._t(key) : this._t("loading.default");
     },
 
     _ensurePreviewLoading() {
@@ -280,7 +376,7 @@ const App = {
         overlay.innerHTML = `
             <div class="preview-loading-indicator">
                 <span class="preview-loading-spinner"></span>
-                <span id="preview-loading-text">计算中...</span>
+                <span id="preview-loading-text">${this._t("loading.default")}</span>
             </div>
         `;
         container.appendChild(overlay);
@@ -298,4 +394,3 @@ window.App = App;
 window.addEventListener("DOMContentLoaded", () => {
     App.init();
 });
-

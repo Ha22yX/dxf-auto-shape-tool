@@ -1,10 +1,14 @@
 """Analyze connected edge chains in DXF modelspace."""
+import weakref
 from typing import List, Dict, Tuple, Optional
 from collections import defaultdict, deque
 from ezdxf.math import Vec2
 
 from backend.config import POINT_TOLERANCE
 from backend.dxf_engine import geometry_utils as geom
+
+
+_ADJACENCY_CACHE = weakref.WeakKeyDictionary()
 
 
 def build_chain(doc, seed_handles: List[str]) -> List[str]:
@@ -77,6 +81,13 @@ def _build_adjacency(doc) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     Build endpoint adjacency graph.
     Returns (handle -> neighbors, handle -> endpoint_keys).
     """
+    try:
+        cached = _ADJACENCY_CACHE.get(doc)
+    except TypeError:
+        cached = None
+    if cached is not None:
+        return cached
+
     endpoint_index: Dict[str, List[str]] = defaultdict(list)  # rounded_point -> handles
     handle_endpoints: Dict[str, List[str]] = {}
 
@@ -106,7 +117,12 @@ def _build_adjacency(doc) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
                 if h1 != h2 and h2 not in graph[h1]:
                     graph[h1].append(h2)
 
-    return graph, handle_endpoints
+    result = (graph, handle_endpoints)
+    try:
+        _ADJACENCY_CACHE[doc] = result
+    except TypeError:
+        pass
+    return result
 
 
 def _order_chain(reachable: set, graph: Dict[str, List[str]],
