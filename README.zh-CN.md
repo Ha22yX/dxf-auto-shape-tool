@@ -1,56 +1,50 @@
-<div align="center">
-  <h1>Surfboard Vacuum Table DXF Generator</h1>
-  <p>一个本地 CAD 自动化工具，可从 DXF 轮廓生成冲浪板真空台吸孔和胶囊槽。</p>
+# 冲浪板吸附底板 DXF 生成工具
 
-  <p>
-    <a href="README.md">English</a>
-    &middot;
-    <a href="#快速开始">快速开始</a>
-    &middot;
-    <a href="#核心能力">核心能力</a>
-    &middot;
-    <a href="#技术栈">技术栈</a>
-  </p>
+[English](README.md)
 
-  <p>
-    <img alt="Python: FastAPI" src="https://img.shields.io/badge/Python-FastAPI-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-    <img alt="CAD: DXF" src="https://img.shields.io/badge/CAD-DXF-287866?style=for-the-badge" />
-    <img alt="Automation: manufacturing" src="https://img.shields.io/badge/Automation-manufacturing-7d73b7?style=for-the-badge" />
-  </p>
-</div>
+这是我为爸爸的公司开发的一个工具，用来生成冲浪板加工时所需的真空吸附底板图纸。导入冲浪板轮廓后，使用者可以调整孔和槽的参数，再导出底板的 DXF 图纸。
+
+## 我为什么做这个项目
+
+我爸爸的公司是常州市如发机械有限公司，主要生产加工冲浪板的机器。加工时，需要用一块定制底板，通过真空吸附把冲浪板固定在机器上。不同客户的冲浪板形状不一样，底板也要跟着调整。
+
+在我开发这个程序之前，公司每遇到一种新的冲浪板型号，就要重新画一套底板图纸。虽然很多步骤是重复的，但每个新设计仍然要花几个小时。我想把这些重复的画图步骤写成程序，让电脑来完成。
+
+现在只需要导入轮廓、调整参数，就能生成图纸。在爸爸公司的使用流程中，这个过程从原来的**每个设计数小时**缩短到了**不到 30 秒**。这里说的是准备图纸的时间，实际加工底板还需要另外完成。
+
+## 从图纸到实物
+
+下面这张照片是根据我的程序生成的图纸加工出来的真空吸附底板。它用于在加工时固定冲浪板，也是程序输出实际用到公司机器上的一个例子。
 
 <p align="center">
-  <img src=".github/assets/readme-hero.svg" alt="Surfboard Vacuum Table DXF Generator 项目概览图" width="100%" />
+  <img src="docs/assets/surfboard-vacuum-fixture.jpg" alt="根据本程序生成的图纸加工出来的冲浪板真空吸附底板实物" width="480" />
 </p>
 
-<p align="center">
-  <img src="docs/assets/Pic.png" alt="Surfboard vacuum table DXF generator interface screenshot" width="100%" />
-</p>
+*根据程序生成的图纸加工出来的底板实物。*
 
-## 项目概览
+## 怎么使用
 
-当吸孔和胶囊槽需要沿曲线板边生成时，手工编辑 DXF 很慢，也容易出错。
+1. 导入包含冲浪板轮廓的 DXF 文件。
+2. 在预览中选中用于生成孔和槽的轮廓边。
+3. 调整孔的大小、间距、槽的设置，以及不需要生成槽的区域，并查看预览。
+4. 导出新的 DXF 图纸，在 CAD/CAM 软件中检查后再用于加工。
 
-这个工具把轮廓选择转换成可重复的加工几何，并提供预览辅助和导出控制。
+使用者可以直接修改参数，不用每次重新画整个布局。界面中的辅助线方便查看孔和槽的排列，导出的 DXF 则保留加工需要的图形。
 
-## 核心能力
+![程序中的冲浪板轮廓预览和参数面板](docs/assets/Pic.png)
 
-- 上传并预览冲浪板轮廓 DXF。
-- 根据选中边生成射线、吸孔和胶囊槽。
-- 调节射线、孔、槽、间距、对称和禁槽参数。
-- 把预览辅助线与真实加工几何分开。
-- 包含 Windows 启动器和打包材料，便于本地车间使用。
+## 用到的技术
 
-## 工作方式
+| 部分 | 工具 | 用途 |
+| --- | --- | --- |
+| 后端 | Python、FastAPI | 在本地运行，处理文件上传和图纸生成。 |
+| 图形处理 | ezdxf 和自己编写的几何处理代码 | 读取轮廓，生成吸孔、胶囊形长槽和导风槽。 |
+| 界面 | HTML、CSS、JavaScript、SVG | 显示轮廓、选中的边、参数和预览。 |
+| Windows 启动与打包 | 启动脚本、PyInstaller | 提供本地启动和打包方式。 |
 
-1. 上传 DXF 轮廓。
-2. 在浏览器预览中选择目标边。
-3. 调节生成参数并预览结果。
-4. 导出只包含加工几何的新 DXF。
+## 在本地运行
 
-## 快速开始
-
-可以用下面的命令在本地运行项目。
+安装 Python 和 Git 后，运行以下命令：
 
 ```bash
 git clone https://github.com/Ha22yX/dxf-auto-shape-tool.git
@@ -59,41 +53,30 @@ pip install -r requirements.txt
 python main.py
 ```
 
-在 Windows 上，`scripts/windows/start-manager-hidden.vbs` 可启动本地服务管理器。
+程序会启动本地服务，并自动在浏览器中打开界面。如果浏览器没有自动打开，可以访问默认地址 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
-## 配置项
+Windows 用户也可以通过 [`scripts/windows/start-manager-hidden.vbs`](scripts/windows/start-manager-hidden.vbs) 启动本地服务管理器。目前的软件界面是中文。
 
-| 项目 | 作用 |
-| --- | --- |
-| 输入 DXF | 使用干净轮廓，并在导出前确认选中边。 |
-| 几何参数 | 根据工装调整孔/槽间距、对称和禁槽区域。 |
-| 导出 | 加工前必须在 CAD/CAM 软件中检查生成 DXF。 |
-| 打包 | 可用 Windows 脚本/PyInstaller 材料部署到本地工作站。 |
+## 使用时需要注意的地方
 
-## 技术栈
+- 这个工具是围绕爸爸公司的实际流程做的，其他类型的底板可能需要调整图形生成规则或参数。
+- 尽量使用干净的 DXF 轮廓，并确认选中了正确的边。
+- 孔间距、槽的间隙、对称设置和禁槽区域，需要根据实际底板调整。
+- 加工前仍然需要在 CAD/CAM 软件中检查导出的文件。
 
-| 层级 | 技术 | 作用 |
-| --- | --- | --- |
-| 后端 | FastAPI, Python | DXF 处理和本地 Web 服务。 |
-| 几何 | ezdxf, custom helpers | 读取轮廓并生成加工实体。 |
-| 前端 | HTML, CSS, JavaScript, SVG | 交互预览和参数面板。 |
-| 打包 | Windows scripts / PyInstaller | 本地启动器和可执行文件路径。 |
-
-## 项目结构
+## 项目文件
 
 ```text
-backend/                 FastAPI 服务和 DXF 引擎
-frontend/                浏览器 UI 和 SVG 预览器
-scripts/windows/         本地启动脚本
-packaging/               PyInstaller spec 和构建脚本
-docs/assets/Pic.png      README 界面截图
-tests/                   几何、DXF、点击和 websocket 测试
+backend/                 Python 服务和 DXF 图形处理代码
+frontend/                浏览器界面和 SVG 预览
+scripts/windows/         Windows 启动脚本
+packaging/               PyInstaller 配置和构建脚本
+docs/assets/             软件界面截图和底板实物照片
+Test Files/              DXF 示例文件
+tests/                   几何、DXF、交互和 WebSocket 测试
+main.py                  启动本地服务并打开浏览器
 ```
-
-## 项目状态
-
-这是面向特定冲浪板真空台流程的实用制造辅助工具，不是通用 CAD 软件。
 
 ## 许可证
 
-当前仓库尚未声明项目级开源许可证；公开复用或分发前建议先补充 License。
+[MIT](LICENSE)。
