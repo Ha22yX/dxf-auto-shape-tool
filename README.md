@@ -1,6 +1,27 @@
-# Surfboard Vacuum Fixture DXF Tool
+<div align="center">
+  <h1>Surfboard Vacuum Table DXF Generator</h1>
+  <p>A tool I built for my dad's company to turn surfboard outlines into custom vacuum-fixture drawings.</p>
 
-[简体中文](README.zh-CN.md)
+  <p>
+    <a href="README.zh-CN.md">Chinese</a>
+    &middot;
+    <a href="#run-it-locally">Quickstart</a>
+    &middot;
+    <a href="#how-to-use-it">How It Works</a>
+    &middot;
+    <a href="#what-i-used">Tech Stack</a>
+  </p>
+
+  <p>
+    <img alt="Python: FastAPI" src="https://img.shields.io/badge/Python-FastAPI-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+    <img alt="CAD: DXF" src="https://img.shields.io/badge/CAD-DXF-287866?style=for-the-badge" />
+    <img alt="Automation: manufacturing" src="https://img.shields.io/badge/Automation-manufacturing-7d73b7?style=for-the-badge" />
+  </p>
+</div>
+
+<p align="center">
+  <img src=".github/assets/readme-hero.svg" alt="Surfboard vacuum fixture workflow: DXF outline, edge selection, hole and slot generation, and DXF export" width="100%" />
+</p>
 
 I built this tool to help my dad's company make custom vacuum fixtures for surfboard machining. It takes a surfboard outline, lets the user adjust the hole and slot settings, and exports a DXF drawing for the fixture.
 
@@ -71,6 +92,7 @@ backend/                 Python service and DXF geometry code
 frontend/                Browser interface and SVG preview
 scripts/windows/         Windows launch scripts
 packaging/               PyInstaller configuration and build script
+.github/assets/          SVG workflow overview
 docs/assets/             Interface screenshot and physical fixture photo
 Test Files/              Sample DXF files
 tests/                   Geometry, DXF, interaction, and WebSocket tests

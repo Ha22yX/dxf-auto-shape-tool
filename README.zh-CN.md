@@ -1,6 +1,27 @@
-# 冲浪板吸附底板 DXF 生成工具
+<div align="center">
+  <h1>Surfboard Vacuum Table DXF Generator</h1>
+  <p>我为爸爸公司开发的工具：从冲浪板轮廓生成定制真空吸附底板图纸。</p>
 
-[English](README.md)
+  <p>
+    <a href="README.md">English</a>
+    &middot;
+    <a href="#在本地运行">快速开始</a>
+    &middot;
+    <a href="#怎么使用">使用流程</a>
+    &middot;
+    <a href="#用到的技术">技术栈</a>
+  </p>
+
+  <p>
+    <img alt="Python: FastAPI" src="https://img.shields.io/badge/Python-FastAPI-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+    <img alt="CAD: DXF" src="https://img.shields.io/badge/CAD-DXF-287866?style=for-the-badge" />
+    <img alt="Automation: manufacturing" src="https://img.shields.io/badge/Automation-manufacturing-7d73b7?style=for-the-badge" />
+  </p>
+</div>
+
+<p align="center">
+  <img src=".github/assets/readme-hero.svg" alt="冲浪板吸附底板生成流程：导入 DXF 轮廓、选择边、生成孔和槽、导出 DXF" width="100%" />
+</p>
 
 这是我为爸爸的公司开发的一个工具，用来生成冲浪板加工时所需的真空吸附底板图纸。导入冲浪板轮廓后，使用者可以调整孔和槽的参数，再导出底板的 DXF 图纸。
 
@@ -71,6 +92,7 @@ backend/                 Python 服务和 DXF 图形处理代码
 frontend/                浏览器界面和 SVG 预览
 scripts/windows/         Windows 启动脚本
 packaging/               PyInstaller 配置和构建脚本
+.github/assets/          SVG 流程概览图
 docs/assets/             软件界面截图和底板实物照片
 Test Files/              DXF 示例文件
 tests/                   几何、DXF、交互和 WebSocket 测试
