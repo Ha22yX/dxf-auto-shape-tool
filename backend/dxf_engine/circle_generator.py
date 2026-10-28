@@ -9,6 +9,8 @@ from typing import List, Tuple
 import math
 import ezdxf
 from ezdxf.math import Vec2
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
 
 from backend.state import CircleParams
 from backend.config import GENERATED_LAYER, POINT_TOLERANCE, AIR_DUCT_LAYER
@@ -1247,6 +1249,12 @@ def _bbox_outline_with_inlet(polygon, rect):
 
 
 def _bridge_air_duct_components_with_inlet(component_polygons, inlet_points):
+    """Join side ducts only inside the inlet band, preserving their curves.
+
+    The old bounding-box bridge replaced every side vertex with min/max X,
+    turning curved no-slot regions into vertical rectangles. Attach the inlet
+    inside each actual side polygon and union the unchanged boundaries instead.
+    """
     components = [
         _dedupe_air_duct_points(polygon)
         for polygon in component_polygons
@@ -1255,44 +1263,48 @@ def _bridge_air_duct_components_with_inlet(component_polygons, inlet_points):
     inlet = _dedupe_air_duct_points(inlet_points)
     if len(components) < 2 or len(inlet) < 4:
         return []
-
-    components = sorted(
-        components,
-        key=lambda polygon: sum(point.x for point in polygon) / len(polygon),
-    )
-    left = components[0]
-    right = components[-1]
-    all_points = [point for polygon in components for point in polygon]
-    all_points.extend(inlet)
-    min_y = min(point.y for point in all_points)
-    max_y = max(point.y for point in all_points)
-    slot_min_y = max(min_y, min(point.y for point in inlet))
-    slot_max_y = min(max_y, max(point.y for point in inlet))
-    if slot_max_y - slot_min_y <= POINT_TOLERANCE:
+    components.sort(key=lambda polygon: sum(p.x for p in polygon) / len(polygon))
+    polygons = [Polygon(points) for points in components]
+    if any(not polygon.is_valid or polygon.area <= 0 for polygon in polygons):
         return []
 
-    left_min_x = min(point.x for point in left)
-    left_max_x = max(point.x for point in left)
-    right_min_x = min(point.x for point in right)
-    right_max_x = max(point.x for point in right)
-    if right_min_x <= left_max_x + POINT_TOLERANCE:
-        return []
+    slot_min_y = min(point.y for point in inlet)
+    slot_max_y = max(point.y for point in inlet)
+    bridges = []
+    for left, right in zip(components, components[1:]):
+        min_y = max(slot_min_y, min(p.y for p in left), min(p.y for p in right))
+        max_y = min(slot_max_y, max(p.y for p in left), max(p.y for p in right))
+        if max_y - min_y <= POINT_TOLERANCE:
+            continue
+        # Include every original bend in this band. Midpoints give a real
+        # overlap with the ducts without nudging beyond their outer boundary.
+        levels = sorted({min_y, max_y} | {
+            p.y for points in (left, right) for p in points if min_y < p.y < max_y
+        })
+        left_edge, right_edge = [], []
+        for y in levels:
+            left_span = _horizontal_extents_at_y([left], y)
+            right_span = _horizontal_extents_at_y([right], y)
+            if left_span is None or right_span is None:
+                break
+            left_edge.append(Vec2(sum(left_span) / 2.0, y))
+            right_edge.append(Vec2(sum(right_span) / 2.0, y))
+        else:
+            bridge = Polygon(left_edge + list(reversed(right_edge)))
+            if bridge.is_valid and bridge.area > 0:
+                bridges.append(bridge)
 
-    loop = [
-        Vec2(left_min_x, min_y),
-        Vec2(left_max_x, min_y),
-        Vec2(left_max_x, slot_min_y),
-        Vec2(right_min_x, slot_min_y),
-        Vec2(right_min_x, min_y),
-        Vec2(right_max_x, min_y),
-        Vec2(right_max_x, max_y),
-        Vec2(right_min_x, max_y),
-        Vec2(right_min_x, slot_max_y),
-        Vec2(left_max_x, slot_max_y),
-        Vec2(left_max_x, max_y),
-        Vec2(left_min_x, max_y),
-    ]
-    return [_dedupe_air_duct_points(loop)]
+    merged = unary_union(polygons + bridges)
+    parts = [merged] if merged.geom_type == "Polygon" else list(merged.geoms)
+    loops = []
+    for polygon in parts:
+        if polygon.geom_type != "Polygon":
+            continue
+        # Remove only numerically collinear vertices; retain the actual bends.
+        polygon = polygon.simplify(1e-9, preserve_topology=True)
+        for ring in [polygon.exterior, *polygon.interiors]:
+            loops.append([Vec2(x, y) for x, y in list(ring.coords)[:-1]])
+    return loops
 
 
 def _horizontal_extents_at_y(polygons, y):
@@ -1691,6 +1703,19 @@ def _air_duct_region_contours(records, total_length, params, region):
     if not component_polygons:
         return []
     inlet_points = _air_duct_inlet_points(ordered, params, region, component_polygons)
+    if inlet_points and len(component_polygons) > 1:
+        # Repair coverage on each side before joining. Inserting points into
+        # an already joined loop can deform the inlet or the opposite side.
+        component_polygons = _expand_air_duct_loops_to_cover_records(
+            component_polygons, records, endpoint_radius,
+        )
+        inlet_points = _air_duct_inlet_points(ordered, params, region, component_polygons)
+        loops = _bridge_air_duct_components_with_inlet(component_polygons, inlet_points)
+        return [
+            {"role": f"outline_{index}", "points": loop}
+            for index, loop in enumerate(loops or component_polygons)
+            if len(loop) >= 3
+        ]
     if inlet_points:
         if len(component_polygons) == 1 and len(components) == 1:
             slot_loops = _single_component_air_duct_slot_loops(
@@ -1711,49 +1736,10 @@ def _air_duct_region_contours(records, total_length, params, region):
                     if len(loop) >= 3
                 ]
 
-        if len(records) <= 20:
-            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
-            if len(component_polygons) == 1:
-                loops = _union_polygon_with_rect_boundary(
-                    component_polygons[0],
-                    union_inlet_points,
-                )
-            else:
-                loops = _union_polygons_boundary(component_polygons + [union_inlet_points])
-                coverage_points = [
-                    point
-                    for polygon in component_polygons
-                    for point in polygon
-                ] + inlet_points
-                if len(loops) > 1 or not _loops_cover_points(loops, coverage_points):
-                    bridged = _bridge_air_duct_components_with_inlet(
-                        component_polygons,
-                        inlet_points,
-                    )
-                    if bridged:
-                        loops = bridged
-            loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
-            return [
-                {"role": f"outline_{index}", "points": loop}
-                for index, loop in enumerate(loops)
-                if len(loop) >= 3
-            ]
-
-        # Dense real board path: return one closed outline per region. The
-        # previous fallback drew the duct envelope and inlet as separate
-        # contours, which looked like internal dividing lines.
-        if len(component_polygons) > 1:
-            bridged = _bridge_air_duct_components_with_inlet(
-                component_polygons,
-                inlet_points,
-            )
-            loops = bridged if bridged else component_polygons
-        else:
-            union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
-            loops = _union_polygon_with_rect_boundary(
-                component_polygons[0],
-                union_inlet_points,
-            )
+        union_inlet_points = _nudge_inlet_points_for_union(inlet_points)
+        loops = _union_polygon_with_rect_boundary(
+            component_polygons[0], union_inlet_points,
+        )
         loops = _expand_air_duct_loops_to_cover_records(loops, records, endpoint_radius)
         return [
             {"role": f"outline_{index}", "points": loop}
