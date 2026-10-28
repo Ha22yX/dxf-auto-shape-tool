@@ -7,6 +7,15 @@ cd /d "%PROJECT_ROOT%"
 
 set "PYTHON_CMD="
 set "PYTHONW_CMD="
+if exist "%PROJECT_ROOT%\.venv\Scripts\pythonw.exe" (
+    set "PYTHONW_CMD=%PROJECT_ROOT%\.venv\Scripts\pythonw.exe"
+    goto run_launcher_hidden
+)
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
+    set "PYTHON_CMD=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+    goto run_launcher
+)
+
 
 if exist "C:\Python314\pythonw.exe" set "PYTHONW_CMD=C:\Python314\pythonw.exe"
 if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"
@@ -33,11 +42,11 @@ pause
 exit /b 1
 
 :run_launcher_hidden
-start "" "%PYTHONW_CMD%" "%PROJECT_ROOT%\launcher.py"
+start "" "%PYTHONW_CMD%" "%PROJECT_ROOT%\start_local.pyw"
 exit /b 0
 
 :run_launcher
-"%PYTHON_CMD%" "%PROJECT_ROOT%\launcher.py"
+"%PYTHON_CMD%" "%PROJECT_ROOT%\start_local.pyw"
 if errorlevel 1 (
     echo.
     echo Launcher exited with an error.

@@ -13,6 +13,7 @@ from ezdxf.math import Vec2
 from backend.state import CircleParams
 from backend.config import GENERATED_LAYER, POINT_TOLERANCE, AIR_DUCT_LAYER
 from backend.dxf_engine import geometry_utils as geom
+from backend.dxf_engine.outline import analyze_outline
 
 
 def _keep_normal_continuity(normals):
@@ -253,39 +254,19 @@ def _samples_for_generation(doc, chain, params, closed, manual_apex_distance=Non
 
 
 def _oriented_normals(doc, chain, samples, params, closed):
-    """Compute consistently-oriented normals along the chain (left-of-tangent)."""
-    if closed:
-        total = geom.chain_length(doc, chain)
-        boundary_count = max(129, min(5001, int(total / 2.0) if total > 0 else 129))
-        if boundary_count % 2 == 0:
-            boundary_count += 1
-        boundary_samples = geom.sample_chain(
-            doc,
-            chain,
-            boundary_count,
-            closed=True,
-            smooth_tangents=False,
-        )
-        return geom.orient_normals_for_closed_chain(
-            samples,
-            inward=(params.ray_direction == "inward"),
-            boundary_samples=boundary_samples,
-        )
-
-    oriented_normals = [s.normal for s in samples]
-    is_single_arc = (
-        len(chain) == 1
-        and doc.entitydb.get(chain[0])
-        and doc.entitydb[chain[0]].dxftype() == "ARC"
-    )
-    if params.ray_direction == "inward":
-        if is_single_arc:
-            # Standalone ARC raw normals point outward; flip to inward.
-            oriented_normals = [-n for n in oriented_normals]
-    else:  # outward
-        if not is_single_arc:
-            oriented_normals = [-n for n in oriented_normals]
-    return _keep_normal_continuity(oriented_normals)
+    """Use contour winding and correctly oriented local tangents, never centroid guesses."""
+    outline = analyze_outline(doc, chain)
+    if outline.ready:
+        sign = 1.0 if outline.polygon.exterior.is_ccw else -1.0
+        if params.ray_direction != "inward":
+            sign = -sign
+        return [geom.normalize(geom.perpendicular(sample.tangent)) * sign for sample in samples]
+    # Open curves have only a local left/right side. The web service refuses
+    # manufacturing output until the entire contour is closed and validated.
+    normals = [sample.normal for sample in samples]
+    if params.ray_direction != "inward":
+        normals = [-normal for normal in normals]
+    return _keep_normal_continuity(normals)
 
 
 def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool = False,
@@ -327,6 +308,26 @@ def compute_placements(doc, chain: List[str], params: CircleParams, closed: bool
     if params.dedupe_closed_rays and not top_gap_active:
         placements = _dedupe_placements_by_source(placements)
     return placements
+
+
+def _prepare_generation(doc, chain, params, closed, manual_apex_distance, require_closed_outline):
+    outline = analyze_outline(doc, chain)
+    blocked = bool(chain) and not outline.ready and (require_closed_outline or closed)
+    if blocked:
+        return [], outline, True, 0
+    placements = compute_placements(doc, chain, params, closed=outline.ready or closed,
+                                    manual_apex_distance=manual_apex_distance)
+    rejected = 0
+    if outline.ready:
+        inward = params.ray_direction == "inward"
+        for placement in placements:
+            eligible = [center for center in placement["centers"]
+                        if outline.allows_circle(center, params.circle_radius, inward, placement["point"])]
+            rejected += len(placement["centers"]) - len(eligible)
+            placement["centers"] = eligible
+            placement["ray_end"] = eligible[-1] if eligible else placement["point"]
+            placement["_outline_guard"] = (outline, inward)
+    return placements, outline, False, rejected
 
 
 def _circle_priority(item, axis_center_x):
@@ -493,13 +494,18 @@ def _capsule_for_placement(placement, params, kept_items=None):
         direction = -direction
     perp = Vec2(-direction.y, direction.x)
     radius = params.circle_radius
-    return {
+    capsule = {
         "near": near_center,
         "far": far_center,
         "direction": direction,
         "perp": perp,
         "radius": radius,
     }
+    guard = placement.get("_outline_guard")
+    if guard is not None and not guard[0].allows_capsule(capsule, guard[1]):
+        return None
+    return capsule
+
 
 
 def _capsule_svg_path(capsule, bounds, scale):
@@ -2149,14 +2155,14 @@ def _best_capsule_conflict(placements, params, axis, active_items):
 
 def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
                              closed: bool, bounds: dict, scale: float,
-                             manual_apex_distance=None) -> dict:
+                             manual_apex_distance=None, require_closed_outline=False) -> dict:
     """Compute overlay geometry expressed in base-SVG output units.
 
     Does NOT modify any DXF document. ``bounds``/``scale`` come from
     ``svg_exporter.doc_to_base_svg`` and define the WCS -> SVG transform.
     """
-    placements = compute_placements(
-        doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
+    placements, outline, blocked, boundary_rejected = _prepare_generation(
+        doc, chain, params, closed, manual_apex_distance, require_closed_outline
     )
     kept_items, removed_items = _overlap_pruned_circle_items(doc, chain, params, placements)
     kept_by_placement = _items_by_placement(kept_items)
@@ -2228,6 +2234,8 @@ def compute_preview_geometry(doc, chain: List[str], params: CircleParams,
         apex_marker = {"cx": ax, "cy": ay, "r": max(5.0, params.circle_radius * scale)}
 
     return {
+        "safety": {"status": outline.status, "blocked": blocked,
+                   "boundary_rejected_count": boundary_rejected, "curve_tolerance": outline.curve_error},
         "circles": circles,
         "removed_circles": removed_circles,
         "rays": rays,
@@ -2285,14 +2293,17 @@ def _chain_path_d(doc, chain: List[str], closed: bool, bounds: dict, scale: floa
 
 
 def generate_circles(doc: ezdxf.document.Drawing, chain: List[str], params: CircleParams,
-                     closed: bool = False, manual_apex_distance=None) -> Tuple[List[str], List[str]]:
+                     closed: bool = False, manual_apex_distance=None,
+                     require_closed_outline=False) -> Tuple[List[str], List[str]]:
     """Write circle and ray entities into ``doc`` (used for the saved DXF).
 
     Returns (circle_handles, ray_handles).
     """
-    placements = compute_placements(
-        doc, chain, params, closed=closed, manual_apex_distance=manual_apex_distance
+    placements, outline, blocked, _ = _prepare_generation(
+        doc, chain, params, closed, manual_apex_distance, require_closed_outline
     )
+    if blocked:
+        raise ValueError(f"outline_{outline.status}")
     if not placements:
         return [], []
     kept_items, _ = _overlap_pruned_circle_items(doc, chain, params, placements)

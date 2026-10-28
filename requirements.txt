@@ -5,3 +5,4 @@ python-multipart>=0.0.6
 aiofiles>=23.0.0
 ezdxf>=1.1.0
 Pillow>=10.0.0
+shapely>=2.0,<3

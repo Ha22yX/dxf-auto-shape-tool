@@ -3,54 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DXF 自动图形工具</title>
+    <title data-i18n="appTitle">DXF 自动图形工具</title>
     <link rel="icon" type="image/svg+xml" href="/static/assets/app-icon.svg?v=20260630-icon">
     <link rel="alternate icon" type="image/x-icon" href="/static/assets/app-icon.ico?v=20260630-icon">
     <link rel="apple-touch-icon" href="/static/assets/app-icon.png?v=20260630-icon">
-    <link rel="stylesheet" href="/static/css/main.css?v=20260630-air-duct-dim">
-    <link rel="stylesheet" href="/static/css/viewer.css?v=20260630-air-duct-dim">
+    <link rel="stylesheet" href="/static/css/main.css?v=20261027-autoclose">
+    <link rel="stylesheet" href="/static/css/viewer.css?v=20261027-autoclose">
 </head>
 <body>
     <div class="app">
         <header class="app-header">
-            <h1>DXF 自动图形工具</h1>
+            <h1 data-i18n="appTitle">DXF 自动图形工具</h1>
             <div class="header-actions">
+                <label class="language-control" for="language-select">
+                    <span data-i18n="language">语言</span>
+                    <select id="language-select">
+                        <option value="zh-CN" lang="zh-CN">中文</option>
+                        <option value="en" lang="en">English</option>
+                    </select>
+                </label>
                 <input type="file" id="file-input" accept=".dxf" hidden>
-                <button id="upload-btn" class="btn btn-primary">上传 DXF</button>
+                <button id="upload-btn" class="btn btn-primary" data-i18n="upload">上传 DXF</button>
             </div>
         </header>
 
         <main class="app-main">
             <section class="viewer-section">
+                <div id="geometry-notice" class="geometry-notice" role="status" hidden></div>
                 <div id="svg-container" class="svg-container">
                     <div id="preview-loading" class="preview-loading" aria-hidden="true">
                         <div class="preview-loading-indicator">
                             <span class="preview-loading-spinner"></span>
-                            <span id="preview-loading-text">计算中...</span>
+                            <span id="preview-loading-text" data-i18n="calculating">计算中...</span>
                         </div>
                     </div>
                     <div class="empty-state">
-                        <p>请先上传 DXF 文件</p>
+                        <p data-i18n="emptyState">请先上传 DXF 文件</p>
                     </div>
                 </div>
                 <div class="status-bar">
-                    <span id="status-session">未连接会话</span>
-                    <span id="status-selection">已选边: 0 | 总长: 0</span>
-                    <span id="status-generated">生成圆: 0</span>
-                    <span id="status-coords">坐标: -, -</span>
+                    <span id="status-session" data-i18n="disconnected">未连接会话</span>
+                    <span id="status-selection" data-i18n="selection" data-i18n-params='{"count":0,"length":0}'>已选边: 0 | 总长: 0</span>
+                    <span id="status-generated" data-i18n="generated" data-i18n-params='{"count":0}'>生成圆: 0</span>
+                    <span id="status-coords" data-i18n="coordinates" data-i18n-params='{"x":"-","y":"-"}'>坐标: -, -</span>
                 </div>
             </section>
 
             <aside class="panel-section">
                 <div class="panel-card">
-                    <h2>参数设置</h2>
+                    <h2 data-i18n="parameters">参数设置</h2>
 
                     <section class="param-section">
-                        <h3>圆圈</h3>
+                        <h3 data-i18n="circles">圆圈</h3>
 
                     <div class="form-group slider-group" data-param="circle_radius">
                         <div class="slider-header">
-                            <label>圆圈半径</label>
+                            <label data-i18n="circleRadius">圆圈半径</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-circle-radius" value="3.5" data-step="0.1" data-min="0.1" data-max="9999">
                                 <span class="unit-label">mm</span>
@@ -62,7 +70,7 @@
 
                     <div class="form-group slider-group" data-param="circles_per_ray">
                         <div class="slider-header">
-                            <label>每射线圆数</label>
+                            <label data-i18n="circlesPerRay">每射线圆数</label>
                             <input type="text" inputmode="numeric" id="param-circles-per-ray" value="3" data-step="1" data-min="0" data-max="10">
                         </div>
                         <input type="range" id="param-circles-per-ray-slider" min="0" max="10" step="1" value="3">
@@ -71,7 +79,7 @@
 
                     <div class="form-group slider-group" data-param="circle_spacing">
                         <div class="slider-header">
-                            <label>圆间距</label>
+                            <label data-i18n="circleSpacing">圆间距</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-circle-spacing" value="17.5" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -84,11 +92,11 @@
                     </section>
 
                     <section class="param-section">
-                        <h3>射线</h3>
+                        <h3 data-i18n="rays">射线</h3>
 
                     <div class="form-group slider-group" data-param="ray_offset">
                         <div class="slider-header">
-                            <label>射线整体偏移</label>
+                            <label data-i18n="rayOffset">射线整体偏移</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-ray-offset" value="75" data-step="0.5" data-min="-99999" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -100,7 +108,7 @@
 
                     <div class="form-group slider-group" data-param="ray_count">
                         <div class="slider-header">
-                            <label>射线数量</label>
+                            <label data-i18n="rayCount">射线数量</label>
                             <input type="text" inputmode="numeric" id="param-ray-count" value="200" data-step="1" data-min="0" data-max="99999">
                         </div>
                         <input type="range" id="param-ray-count-slider" min="0" max="500" step="1" value="200">
@@ -108,26 +116,26 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="param-ray-direction">射线方向</label>
+                        <label for="param-ray-direction" data-i18n="rayDirection">射线方向</label>
                         <select id="param-ray-direction">
-                            <option value="inward" selected>向内</option>
-                            <option value="outward">向外</option>
+                            <option value="inward" selected data-i18n="inward">向内</option>
+                            <option value="outward" data-i18n="outward">向外</option>
                         </select>
                     </div>
 
                     <div class="form-group toggle-group">
-                        <label for="param-dedupe-closed-rays">闭合端点射线去重</label>
+                        <label for="param-dedupe-closed-rays" data-i18n="dedupeClosedRays">闭合端点射线去重</label>
                         <input type="checkbox" id="param-dedupe-closed-rays" checked>
                     </div>
 
                     </section>
 
                     <section class="param-section">
-                        <h3>长条与间隔</h3>
+                        <h3 data-i18n="slotsAndGaps">长条与间隔</h3>
 
                     <div class="form-group slider-group" data-param="capsule_start_distance">
                         <div class="slider-header">
-                            <label>长条起点距离</label>
+                            <label data-i18n="capsuleStart">长条起点距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-start-distance" value="10" data-step="0.5" data-min="0.1" data-max="75">
                                 <span class="unit-label">mm</span>
@@ -139,7 +147,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_clearance_distance">
                         <div class="slider-header">
-                            <label>胶囊安全间距</label>
+                            <label data-i18n="capsuleClearance">胶囊安全间距</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-clearance-distance" value="2" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -151,7 +159,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_axis_gap_above_distance">
                         <div class="slider-header">
-                            <label>水平轴上方无长条距离</label>
+                            <label data-i18n="gapAbove">水平轴上方无长条距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-axis-gap-above-distance" value="0" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -163,7 +171,7 @@
 
                     <div class="form-group slider-group" data-param="capsule_axis_gap_below_distance">
                         <div class="slider-header">
-                            <label>水平轴下方无长条距离</label>
+                            <label data-i18n="gapBelow">水平轴下方无长条距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-capsule-axis-gap-below-distance" value="0" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -175,7 +183,7 @@
 
                     <div class="form-group slider-group" data-param="top_gap_distance">
                         <div class="slider-header">
-                            <label>顶部间隔</label>
+                            <label data-i18n="topGap">顶部间隔</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-top-gap-distance" value="40" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -188,16 +196,16 @@
                     </section>
 
                     <section class="param-section">
-                        <h3>导风槽</h3>
+                        <h3 data-i18n="airDucts">导风槽</h3>
 
                     <div class="form-group toggle-group">
-                        <label for="param-air-duct-enabled">显示/导出导风槽</label>
+                        <label for="param-air-duct-enabled" data-i18n="airDuctEnabled">显示/导出导风槽</label>
                         <input type="checkbox" id="param-air-duct-enabled" checked>
                     </div>
 
                     <div class="form-group slider-group" data-param="air_duct_inlet_distance">
                         <div class="slider-header">
-                            <label>横向吸风口距离</label>
+                            <label data-i18n="airDuctInlet">横向吸风口距离</label>
                             <div class="input-with-unit">
                                 <input type="text" inputmode="decimal" id="param-air-duct-inlet-distance" value="20" data-step="0.5" data-min="0" data-max="99999">
                                 <span class="unit-label">mm</span>
@@ -210,15 +218,15 @@
                     </section>
 
                     <section class="param-section">
-                        <h3>显示</h3>
+                        <h3 data-i18n="display">显示</h3>
 
                     <div class="form-group toggle-group">
-                        <label for="toggle-preview">显示生成图</label>
+                        <label for="toggle-preview" data-i18n="showGenerated">显示生成图</label>
                         <input type="checkbox" id="toggle-preview" checked>
                     </div>
 
                     <div class="form-group toggle-group">
-                        <label for="toggle-air-duct-compare-overlay">导风槽叠加对比</label>
+                        <label for="toggle-air-duct-compare-overlay" data-i18n="compareAirDucts">导风槽叠加对比</label>
                         <input type="checkbox" id="toggle-air-duct-compare-overlay">
                     </div>
 
@@ -227,28 +235,29 @@
                 </div>
 
                 <div class="panel-card actions-card">
-                    <button id="save-btn" class="btn btn-success" disabled>保存 DXF</button>
-                    <button id="clear-selection-btn" class="btn btn-secondary" disabled>清空选择</button>
+                    <button id="save-btn" class="btn btn-success" disabled data-i18n="save">保存 DXF</button>
+                    <button id="clear-selection-btn" class="btn btn-secondary" disabled data-i18n="clearSelection">清空选择</button>
                 </div>
 
                 <div class="panel-card help-card">
-                    <h3>操作说明</h3>
+                    <h3 data-i18n="instructions">操作说明</h3>
                     <ul>
-                        <li>点击线条选中外边</li>
-                        <li>Ctrl + 点击追加相连边</li>
-                        <li>滚轮缩放，拖拽平移</li>
-                        <li>调整参数实时预览</li>
+                        <li data-i18n="helpSelect">点击线条选中外边</li>
+                        <li data-i18n="helpAppend">Ctrl + 点击追加相连边</li>
+                        <li data-i18n="helpPan">滚轮缩放，拖拽平移</li>
+                        <li data-i18n="helpPreview">调整参数实时预览</li>
                     </ul>
                 </div>
             </aside>
         </main>
     </div>
 
-    <script src="/static/js/api.js?v=20260630-air-duct-dim"></script>
-    <script src="/static/js/websocket.js?v=20260630-air-duct-dim"></script>
-    <script src="/static/js/svg_viewer.js?v=20260630-air-duct-dim"></script>
-    <script src="/static/js/selector.js?v=20260630-air-duct-dim"></script>
-    <script src="/static/js/parameter_panel.js?v=20260630-air-duct-dim"></script>
-    <script src="/static/js/app.js?v=20260630-air-duct-dim"></script>
+    <script src="/static/js/i18n.js?v=20261027-autoclose"></script>
+    <script src="/static/js/api.js?v=20261027-autoclose"></script>
+    <script src="/static/js/websocket.js?v=20261027-autoclose"></script>
+    <script src="/static/js/svg_viewer.js?v=20261027-autoclose"></script>
+    <script src="/static/js/selector.js?v=20261027-autoclose"></script>
+    <script src="/static/js/parameter_panel.js?v=20261027-autoclose"></script>
+    <script src="/static/js/app.js?v=20261027-autoclose"></script>
 </body>
 </html>

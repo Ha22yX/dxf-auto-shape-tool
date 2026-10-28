@@ -22,6 +22,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+import urllib.request
 from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
@@ -252,6 +253,10 @@ class LauncherApp:
     def __init__(self, root: tk.Tk, port: int = DEFAULT_PORT) -> None:
         self.root = root
         self.port = port
+        self.startup_pending = False
+        self.startup_deadline = 0.0
+        self.log_path = _app_dir() / "temp" / "launcher.log"
+        self.log_path.parent.mkdir(exist_ok=True)
         self.process: subprocess.Popen[str] | None = None
         self.log_lines: collections.deque[str] = collections.deque(maxlen=LOG_BUFFER_LINES)
         self.log_queue: queue.Queue[str] = queue.Queue()
@@ -344,7 +349,13 @@ class LauncherApp:
 
     def _log(self, text: str) -> None:
         timestamp = time.strftime("%H:%M:%S")
-        self.log_queue.put(f"[{timestamp}] {text.rstrip()}\n")
+        line = f"[{timestamp}] {text.rstrip()}\n"
+        self.log_queue.put(line)
+        try:
+            with self.log_path.open("a", encoding="utf-8") as stream:
+                stream.write(line)
+        except OSError:
+            pass
 
     def _set_status(self, running: bool, text: str) -> None:
         color = "#2e7d32" if running else "#c62828"
@@ -370,9 +381,16 @@ class LauncherApp:
         if self.process and self.process.poll() is None:
             return
 
-        for pid in sorted(_port_pids(self.port)):
-            self._log(f"检测到端口 {self.port} 已被进程 {pid} 占用，正在关闭旧实例...")
-            _kill_pid(pid)
+        if _port_pids(self.port):
+            if self._service_is_ready():
+                self._log("服务已经运行，正在打开网页。")
+                self.open_web()
+                self.root.after(0, self.root.destroy)
+            else:
+                self._set_status(False, "端口被占用")
+                self._log(f"端口 {self.port} 被其他程序占用，未关闭该程序。")
+                messagebox.showerror(APP_TITLE, f"端口 {self.port} 被其他程序占用。请关闭占用此端口的程序后重试。")
+            return
 
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
@@ -387,6 +405,8 @@ class LauncherApp:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -399,7 +419,11 @@ class LauncherApp:
 
         self._log(f"服务正在启动：{self.local_url}")
         self._log(f"局域网访问网址：{self.lan_url}")
-        self._set_status(True, "运行中")
+        self.startup_pending = True
+        self.startup_deadline = time.monotonic() + 30
+        self._set_status(True, "正在启动...")
+        self.status_dot.itemconfigure(self.status_circle, fill="#d99f29")
+        self.open_button.configure(state="disabled")
 
         if self.process.stdout:
             threading.Thread(
@@ -409,6 +433,7 @@ class LauncherApp:
             ).start()
 
     def stop_service(self) -> None:
+        self.startup_pending = False
         if not self.process or self.process.poll() is not None:
             self.process = None
             self._set_status(False, "未运行")
@@ -512,14 +537,37 @@ class LauncherApp:
             self._append_log_text(line)
         self.root.after(200, self._drain_logs)
 
+    def _service_is_ready(self) -> bool:
+        try:
+            with urllib.request.urlopen(self.local_url + "openapi.json", timeout=0.25) as response:
+                data = json.load(response)
+            return data.get("info", {}).get("title") == "DXF 自动图形工具"
+        except (OSError, ValueError):
+            return False
+
     def _poll_process(self) -> None:
         if self.process:
             code = self.process.poll()
             if code is not None:
+                was_starting = self.startup_pending
+                self.startup_pending = False
                 self._log(f"服务进程已退出，退出码：{code}")
                 self.process = None
-                self._set_status(False, "未运行")
-        self.root.after(800, self._poll_process)
+                self._set_status(False, "启动失败" if was_starting else "未运行")
+                if was_starting:
+                    messagebox.showerror(APP_TITLE, f"服务启动失败，退出码：{code}。\n请点击“网站日志”查看原因。\n日志文件：{self.log_path}")
+            elif self.startup_pending:
+                if self._service_is_ready():
+                    self.startup_pending = False
+                    self._set_status(True, "运行中")
+                    self._log(f"服务已就绪，正在打开网页：{self.local_url}")
+                    self.open_web()
+                elif time.monotonic() >= self.startup_deadline:
+                    self.startup_pending = False
+                    self._log("启动等待超时，请查看服务日志。")
+                    self.stop_service()
+                    messagebox.showerror(APP_TITLE, f"服务未能在 30 秒内启动。\n请点击“网站日志”查看原因。\n日志文件：{self.log_path}")
+        self.root.after(400, self._poll_process)
 
     def on_close(self) -> None:
         self.stop_service()

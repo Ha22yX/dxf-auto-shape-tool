@@ -293,6 +293,19 @@ class SvgViewer {
             this.overlay.insertBefore(path, this.generatedLayer);
         }
 
+        this.overlay.querySelectorAll(".repaired-outline-edge").forEach((line) => line.remove());
+        for (const edge of geometry.repaired_edges || []) {
+            const line = document.createElementNS(SVG_NS, "line");
+            line.setAttribute("class", "repaired-outline-edge");
+            for (const key of ["x1", "y1", "x2", "y2"]) line.setAttribute(key, edge[key]);
+            line.setAttribute("stroke", "#FFD166");
+            line.setAttribute("stroke-width", "3");
+            line.setAttribute("stroke-dasharray", "8 5");
+            line.setAttribute("vector-effect", "non-scaling-stroke");
+            line.setAttribute("pointer-events", "none");
+            this.overlay.appendChild(line);
+        }
+
         this._renderDefaultApexMarker(geometry.apex_marker || null);
         this._renderSymmetryAxes(geometry.symmetry_axes || null);
         if (this.capsuleGapGuideVisible) {

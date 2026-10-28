@@ -19,7 +19,7 @@ from backend.state import (
     delete_other_sessions,
     prune_sessions,
 )
-from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils
+from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils, contour_repair
 
 app = FastAPI(title="DXF 自动图形工具")
 SESSION_TTL_SECONDS = 60 * 60
@@ -203,7 +203,11 @@ def _apply_selection(state: SessionState, handle: Optional[str], append: bool) -
         return False
 
     state.selected_handles.append(handle)
-    chain = path_analyzer.build_chain(state.working_doc, state.selected_handles)
+    contour_repair.remove_connections(state.working_doc, state.auto_connections)
+    repair = contour_repair.complete_outline(state.working_doc, state.selected_handles)
+    state.auto_connections = repair.connections
+    state.auto_joined_entity_count = repair.joined_entity_count
+    chain = repair.chain
     state.selected_chain = chain
     state.chain_info = path_analyzer.get_chain_info(state.working_doc, chain)
     axis = geometry_utils.estimate_chain_symmetry_axis(state.working_doc, chain)
@@ -223,7 +227,25 @@ def regenerate(state: SessionState):
         bounds=state.svg_bounds,
         scale=state.svg_scale,
         manual_apex_distance=state.manual_apex_distance,
+        require_closed_outline=True,
     )
+    state.preview_geometry["repaired_edges"] = _connection_preview(state) if state.auto_connections else []
+    state.preview_geometry["safety"].update({
+        "repaired_edge_count": len(state.auto_connections),
+        "repair_total_length": round(sum(connection["length"] for connection in state.auto_connections), 3),
+        "auto_joined_entity_count": state.auto_joined_entity_count,
+    })
+
+
+
+def _connection_preview(state: SessionState):
+    bounds, scale = state.svg_bounds, state.svg_scale
+    return [{
+        "x1": (connection["start"][0] - bounds["min"][0]) * scale,
+        "y1": (bounds["max"][1] - connection["start"][1]) * scale,
+        "x2": (connection["end"][0] - bounds["min"][0]) * scale,
+        "y2": (bounds["max"][1] - connection["end"][1]) * scale,
+    } for connection in state.auto_connections]
 
 
 def _hover_path_payload(state: SessionState) -> list[dict]:
@@ -294,7 +316,7 @@ async def toggle_preview(session_id: str, data: dict):
 
 @app.get("/api/session/{session_id}/download")
 async def download_dxf(session_id: str):
-    """The ONLY place where the DXF is mutated: clone original, add circles, stream."""
+    """Clone the original, copy confirmed closure edges, add circles, and stream."""
     state = get_session(session_id)
     if not state:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -304,16 +326,19 @@ async def download_dxf(session_id: str):
         output_doc.layers.add(GENERATED_LAYER)
 
     if state.selected_chain:
+        output_chain = contour_repair.copy_connections(output_doc, state.selected_chain, state.auto_connections)
         try:
             circle_generator.generate_circles(
                 output_doc,
-                state.selected_chain,
+                output_chain,
                 state.params,
                 closed=state.chain_info.get("is_closed", False),
                 manual_apex_distance=state.manual_apex_distance,
+                require_closed_outline=True,
             )
         except Exception as e:
             _service_log(f"生成DXF失败：session={session_id[:8]}，错误={e}")
+            raise HTTPException(status_code=422, detail=str(e)) from e
         else:
             _service_log(
                 f"导出DXF：session={session_id[:8]}，链段={len(state.selected_chain)}，"
@@ -433,6 +458,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     })
 
             elif msg_type == "clear_selection":
+                contour_repair.remove_connections(state.working_doc, state.auto_connections)
+                state.auto_connections = []
+                state.auto_joined_entity_count = 0
                 state.selected_handles = []
                 state.selected_chain = []
                 state.manual_apex_distance = None

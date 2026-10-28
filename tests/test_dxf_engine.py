@@ -210,7 +210,7 @@ def test_circle_generator():
         circle_radius=2.0,
         circles_per_ray=2,
         circle_spacing=5.0,
-        ray_offset=1.0,
+        ray_offset=4.0,
         ray_count=4,
         ray_direction="inward",
         top_gap_distance=0.0,
@@ -304,10 +304,10 @@ def test_circle_generator_on_lwpolyline_bulge():
 
     handle = poly.dxf.handle
     params = CircleParams(
-        circle_radius=0.2,
+        circle_radius=0.1,
         circles_per_ray=2,
-        circle_spacing=1.0,
-        ray_offset=0.5,
+        circle_spacing=0.25,
+        ray_offset=0.25,
         ray_count=3,
         ray_direction="inward",
         top_gap_distance=0.0,
@@ -316,11 +316,10 @@ def test_circle_generator_on_lwpolyline_bulge():
     circle_handles, _ = circle_generator.generate_circles(doc, [handle], params)
     assert len(circle_handles) == 6  # 3 rays * 2 circles
 
-    # For this single arc the centroid is inside the bulge, so inward circles
-    # should be below the chord (y < 0) for positive bulge on this segment.
+    # Positive bulge is CCW; its inward normal points toward the arc center.
     for h in circle_handles:
         circle = doc.entitydb[h]
-        assert circle.dxf.center.y < 0
+        assert math.hypot(circle.dxf.center.x - 1.0, circle.dxf.center.y - 0.75) < 1.25
 
 
 def test_circle_generator_on_polyline_bulge():
@@ -332,10 +331,10 @@ def test_circle_generator_on_polyline_bulge():
 
     handle = poly.dxf.handle
     params = CircleParams(
-        circle_radius=0.2,
+        circle_radius=0.1,
         circles_per_ray=2,
-        circle_spacing=1.0,
-        ray_offset=0.5,
+        circle_spacing=0.25,
+        ray_offset=0.25,
         ray_count=3,
         ray_direction="inward",
         top_gap_distance=0.0,
@@ -346,7 +345,7 @@ def test_circle_generator_on_polyline_bulge():
 
     for h in circle_handles:
         circle = doc.entitydb[h]
-        assert circle.dxf.center.y < 0
+        assert math.hypot(circle.dxf.center.x - 1.0, circle.dxf.center.y - 0.75) < 1.25
 
 
 def test_polyline_arc_uses_smoothed_curve_normal():

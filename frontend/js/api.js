@@ -13,7 +13,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "上传失败");
+            throw new Error(I18n.error(err.detail, "uploadFailed"));
         }
         return res.json();
     },
@@ -22,7 +22,7 @@ const API = {
         const res = await fetch(
             `${this.baseUrl}/api/session/${sessionId}/svg?generated=${generated}`,
         );
-        if (!res.ok) throw new Error("获取 SVG 失败");
+        if (!res.ok) throw new Error(I18n.t("svgFailed"));
         return res.text();
     },
 
@@ -34,7 +34,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "选择失败");
+            throw new Error(I18n.error(err.detail, "selectionFailed"));
         }
         return res.json();
     },
@@ -48,7 +48,7 @@ const API = {
                 body: JSON.stringify({ show_generated: showGenerated }),
             },
         );
-        if (!res.ok) throw new Error("切换预览失败");
+        if (!res.ok) throw new Error(I18n.t("toggleFailed"));
         return res.json();
     },
 
@@ -60,7 +60,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "参数同步失败");
+            throw new Error(I18n.error(err.detail, "paramsFailed"));
         }
         return res.json();
     },
@@ -71,7 +71,7 @@ const API = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "下载失败");
+            throw new Error(I18n.error(err.detail, "downloadFailed"));
         }
         return res.blob();
     },

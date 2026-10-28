@@ -9,6 +9,7 @@ const App = {
     sessionId: null,
     bounds: null,
     scale: 1,
+    safetyBlocked: false,
     previewLoadingReasons: new Set(),
 
     init() {
@@ -48,8 +49,9 @@ const App = {
 
                 wsClient.connect(this.sessionId);
                 wsClient.onMessage = (msg) => this._handleWsMessage(msg);
-                wsClient.onError = () => this._showError("WebSocket 连接失败");
+                wsClient.onError = () => this._showError(I18n.t("websocketFailed"));
 
+                this._updateGeometryNotice({});
                 this._updateStatus(result);
                 this._setLoading(false);
                 document.getElementById("save-btn").disabled = false;
@@ -65,7 +67,7 @@ const App = {
         svgViewer.onClick = (evt) => {
             if (!this.sessionId) return;
             if (wsClient.sendClick(evt.svgX, evt.svgY, evt.ctrlKey, evt.tol, evt.hoverHandle)) {
-                this._showPreviewLoading("选择中...", "selection");
+                this._showPreviewLoading("selecting", "selection");
             }
         };
 
@@ -73,8 +75,7 @@ const App = {
             if (this.bounds) {
                 const wcsX = pt.x / this.scale + this.bounds.min[0];
                 const wcsY = this.bounds.max[1] - pt.y / this.scale;
-                document.getElementById("status-coords").textContent =
-                    `坐标: ${wcsX.toFixed(1)}, ${wcsY.toFixed(1)}`;
+                I18n.setText("status-coords", "coordinates", { x: wcsX.toFixed(1), y: wcsY.toFixed(1) });
             }
         };
 
@@ -88,7 +89,7 @@ const App = {
 
         parameterPanel.onParamsChange = (params) => {
             if (!this.sessionId) return;
-            this._showPreviewLoading("计算中...", "params");
+            this._showPreviewLoading("calculating", "params");
             wsClient.sendParams(params);
         };
 
@@ -117,10 +118,12 @@ const App = {
             const saveBtn = document.getElementById("save-btn");
             try {
                 saveBtn.disabled = true;
-                this._showPreviewLoading("保存中...", "save");
+                this._showPreviewLoading("saving", "save");
                 const synced = await API.updateParams(this.sessionId, parameterPanel.getParams());
                 if (synced.preview_geometry) {
                     svgViewer.setOverlay(synced.preview_geometry, parameterPanel.getShowGenerated());
+                    this._updateGeometryNotice(synced.preview_geometry);
+                    if (this.safetyBlocked) throw new Error(I18n.t(`outline_${synced.preview_geometry.safety.status}`));
                     if (synced.chain_info) {
                         this._updateStatus({ chain_info: synced.chain_info });
                     }
@@ -135,10 +138,10 @@ const App = {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             } catch (err) {
-                this._showError(err.message || "下载失败");
+                this._showError(err.message || I18n.t("downloadFailed"));
             } finally {
                 this._hidePreviewLoading("save");
-                saveBtn.disabled = false;
+                saveBtn.disabled = this.safetyBlocked;
             }
         });
 
@@ -148,13 +151,13 @@ const App = {
                 if (!this.sessionId) return;
                 // Ask backend to clear selection by sending an explicit clear message.
                 if (wsClient.send("clear_selection", {})) {
-                    this._showPreviewLoading("清除中...", "selection");
+                    this._showPreviewLoading("clearing", "selection");
                 }
             });
     },
 
     _bindStatus() {
-        document.getElementById("status-session").textContent = "未连接会话";
+        I18n.setText("status-session", "disconnected");
     },
 
     _handleWsMessage(msg) {
@@ -163,6 +166,7 @@ const App = {
             if (data.stale_params_preview) return;
             const geometry = data.preview_geometry || {};
             svgViewer.setOverlay(geometry, data.show_generated);
+            this._updateGeometryNotice(geometry);
             if (data.params_seq !== undefined) {
                 this._hidePreviewLoading("params");
             }
@@ -172,18 +176,17 @@ const App = {
                 this._updateStatus({ chain_info: data.chain_info });
             }
             if (data.generated_count !== undefined) {
-                document.getElementById(
-                    "status-generated",
-                ).textContent = `生成圆: ${data.generated_count}`;
+                I18n.setText("status-generated", "generated", { count: data.generated_count });
             }
         } else if (msg.type === "cleared") {
             svgViewer.setOverlay({}, true);
+            this._updateGeometryNotice({});
             svgViewer.clearHover();
             this._hidePreviewLoading("selection");
             this._updateStatus({
                 chain_info: { segment_count: 0, total_length: 0 },
             });
-            document.getElementById("status-generated").textContent = "生成圆: 0";
+            I18n.setText("status-generated", "generated", { count: 0 });
         } else if (msg.type === "hover_result") {
             if (data.request_id !== undefined && data.request_id !== svgViewer._hoverRequestId) {
                 return;
@@ -199,37 +202,51 @@ const App = {
             return;
         } else if (msg.type === "error") {
             this._hidePreviewLoading();
-            this._showError(data.message || "发生错误");
+            this._showError(data.message || I18n.t("genericError"));
         }
+    },
+
+    _updateGeometryNotice(geometry) {
+        const safety = geometry.safety || {};
+        this.safetyBlocked = Boolean(safety.blocked);
+        const notice = document.getElementById("geometry-notice");
+        const count = safety.boundary_rejected_count || 0;
+        const repaired = safety.repaired_edge_count || 0;
+        notice.hidden = !this.safetyBlocked && count === 0 && repaired === 0;
+        notice.dataset.tone = this.safetyBlocked ? "warning" : "info";
+        if (this.safetyBlocked) {
+            I18n.setText(notice, `outline_${safety.status}`);
+        } else if (repaired > 0) {
+            I18n.setText(notice, count > 0 ? "autoClosedFiltered" : "autoClosed", { repaired, length: safety.repair_total_length, count });
+        } else if (count > 0) {
+            I18n.setText(notice, "boundaryFiltered", { count });
+        }
+        document.getElementById("save-btn").disabled = !this.sessionId || this.safetyBlocked;
     },
 
     _updateStatus(result) {
         if (result.session_id) {
-            document.getElementById(
-                "status-session",
-            ).textContent = `会话: ${result.session_id.slice(0, 8)}`;
+            I18n.setText("status-session", "session", { id: result.session_id.slice(0, 8) });
         }
         if (result.chain_info) {
             const info = result.chain_info;
-            document.getElementById(
-                "status-selection",
-            ).textContent = `已选边: ${info.segment_count} | 总长: ${info.total_length}`;
+            I18n.setText("status-selection", "selection", { count: info.segment_count, length: info.total_length });
         }
     },
 
     _setLoading(show) {
         if (show) {
-            this._showPreviewLoading("加载中...", "global");
+            this._showPreviewLoading("loading", "global");
         } else {
             this._hidePreviewLoading("global");
         }
     },
 
-    _showPreviewLoading(text = "计算中...", reason = "global") {
+    _showPreviewLoading(text = "calculating", reason = "global") {
         this.previewLoadingReasons.add(reason);
         const overlay = this._ensurePreviewLoading();
         const label = document.getElementById("preview-loading-text");
-        if (label) label.textContent = text;
+        I18n.setText(label, text);
         if (overlay) overlay.classList.add("is-visible");
     },
 
@@ -258,7 +275,7 @@ const App = {
         overlay.innerHTML = `
             <div class="preview-loading-indicator">
                 <span class="preview-loading-spinner"></span>
-                <span id="preview-loading-text">计算中...</span>
+                <span id="preview-loading-text" data-i18n="calculating">${I18n.t("calculating")}</span>
             </div>
         `;
         container.appendChild(overlay);
@@ -267,7 +284,7 @@ const App = {
 
     _showError(message) {
         console.error(message);
-        alert(message);
+        alert(I18n.error(message));
     },
 };
 

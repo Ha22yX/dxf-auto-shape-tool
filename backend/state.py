@@ -93,6 +93,8 @@ class SessionState:
     last_accessed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     selected_handles: list[str] = field(default_factory=list)
     selected_chain: list[str] = field(default_factory=list)
+    auto_connections: list[dict] = field(default_factory=list)
+    auto_joined_entity_count: int = 0
     manual_apex_distance: Optional[float] = None
     generated_handles: list[str] = field(default_factory=list)
     generated_ray_handles: list[str] = field(default_factory=list)

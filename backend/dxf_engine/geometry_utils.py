@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Tuple, List, Callable, Optional
 from ezdxf.math import Vec2, Vec3, bulge_to_arc
 
-from backend.config import POINT_TOLERANCE
+from backend.config import POINT_TOLERANCE, CURVE_TOLERANCE
 
 
 # ---------------------------------------------------------------------------
@@ -95,15 +95,15 @@ def point_on_arc(center: Vec2, radius: float, angle: float) -> Vec2:
 
 def _ellipse_point(center: Vec2, major_axis: Vec2, ratio: float, param: float) -> Vec2:
     """Parametric point on an ellipse at parameter `param`."""
-    x = center.x + major_axis.x * math.cos(param) * ratio + (-major_axis.y) * math.sin(param)
-    y = center.y + major_axis.y * math.cos(param) * ratio + major_axis.x * math.sin(param)
+    x = center.x + major_axis.x * math.cos(param) - major_axis.y * ratio * math.sin(param)
+    y = center.y + major_axis.y * math.cos(param) + major_axis.x * ratio * math.sin(param)
     return Vec2(x, y)
 
 
 def tangent_on_arc(center: Vec2, point: Vec2, ccw: bool = True) -> Vec2:
     """Tangent direction at point on arc. CCW tangent is perpendicular to radius, rotated CCW."""
     radius_vec = point - center
-    if not ccw:
+    if ccw:
         return normalize(Vec2(-radius_vec.y, radius_vec.x))
     return normalize(Vec2(radius_vec.y, -radius_vec.x))
 
@@ -124,6 +124,10 @@ def line_segment_length(a: Vec2, b: Vec2) -> float:
 def entity_endpoints(entity) -> Optional[Tuple[Vec2, Vec2]]:
     """Return (start, end) endpoints for edge-like entities."""
     dtype = entity.dxftype()
+
+    if dtype in ("ARC", "LWPOLYLINE", "POLYLINE") and not Vec3(entity.dxf.get("extrusion", (0, 0, 1))).isclose(Vec3(0, 0, 1)):
+        segments = _get_parametrization(entity)
+        return (segments[0].evaluate(0.0)[0], segments[-1].evaluate(1.0)[0]) if segments else None
 
     if dtype == "LINE":
         return (
@@ -173,17 +177,8 @@ def entity_endpoints(entity) -> Optional[Tuple[Vec2, Vec2]]:
         return None
 
     if dtype == "ELLIPSE":
-        try:
-            center = vec2_from_vec3(entity.dxf.center)
-            major_axis = vec2_from_vec3(entity.dxf.major_axis)
-            ratio = entity.dxf.ratio
-            start = entity.dxf.start_param
-            end = entity.dxf.end_param
-            p_start = _ellipse_point(center, major_axis, ratio, start)
-            p_end = _ellipse_point(center, major_axis, ratio, end)
-            return (p_start, p_end)
-        except Exception:
-            return None
+        points = list(entity.flattening(distance=CURVE_TOLERANCE, segments=8))
+        return (Vec2(points[0]), Vec2(points[-1])) if len(points) >= 2 else None
 
     if dtype == "SPLINE":
         try:
@@ -838,9 +833,10 @@ def _sample_at_distance(segments: List["_Segment"], cum_lengths: List[float],
     )
 
     if smooth_window > 1e-9 and seg.smoothable:
-        start = max(0.0, target - smooth_window)
-        end = min(total, target + smooth_window)
-        if end - start > 1e-9:
+        cyclic = (segments[0].evaluate(0.0)[0] - segments[-1].evaluate(1.0)[0]).magnitude <= POINT_TOLERANCE
+        start = (target - smooth_window) % total if cyclic else max(0.0, target - smooth_window)
+        end = (target + smooth_window) % total if cyclic else min(total, target + smooth_window)
+        if cyclic or end - start > 1e-9:
             p_start, _, _, _, _ = _raw_sample_at_distance(segments, cum_lengths, start, total)
             p_end, _, _, _, _ = _raw_sample_at_distance(segments, cum_lengths, end, total)
             smoothed = normalize(p_end - p_start)
@@ -879,7 +875,7 @@ def _orient_segment_groups(groups: List[List[_Segment]]) -> List[_Segment]:
     first = groups[0]
     second_start, second_end = _segment_group_endpoints(groups[1])
     first_start, first_end = _segment_group_endpoints(first)
-    if _nearest_distance(first_start, [second_start, second_end]) < _nearest_distance(first_end, [second_start, second_end]):
+    if _nearest_distance(first_start, [second_start, second_end]) + POINT_TOLERANCE < _nearest_distance(first_end, [second_start, second_end]):
         first = _reverse_segment_group(first)
     oriented.append(first)
 
@@ -1096,7 +1092,7 @@ def _get_parametrization(entity) -> List[_Segment]:
 
     elif dtype == "ELLIPSE":
         try:
-            flat_pts = list(entity.flattening(distance=1.0))
+            flat_pts = list(entity.flattening(distance=CURVE_TOLERANCE, segments=8))
             if len(flat_pts) < 2:
                 return result
             wcs_pts = [Vec2(p.x, p.y) for p in flat_pts]
@@ -1125,7 +1121,7 @@ def _get_parametrization(entity) -> List[_Segment]:
 
     elif dtype == "SPLINE":
         try:
-            flat_pts = list(entity.flattening(distance=1.0))
+            flat_pts = list(entity.flattening(distance=CURVE_TOLERANCE, segments=8))
             if len(flat_pts) < 2:
                 return result
             wcs_pts = [Vec2(p.x, p.y) for p in flat_pts]
@@ -1152,6 +1148,25 @@ def _get_parametrization(entity) -> List[_Segment]:
         except Exception:
             pass
 
+    # ARC/CIRCLE and 2D polylines store coordinates in OCS. Rendering already
+    # uses WCS; generation and endpoint connectivity must use that same plane.
+    ocs_types = dtype in ("ARC", "CIRCLE", "LWPOLYLINE") or (dtype == "POLYLINE" and entity.is_2d_polyline)
+    if ocs_types and not Vec3(entity.dxf.get("extrusion", (0, 0, 1))).isclose(Vec3(0, 0, 1)):
+        ocs = entity.ocs()
+        if dtype in ("ARC", "CIRCLE"):
+            elevation = entity.dxf.center.z
+        else:
+            value = entity.dxf.get("elevation", 0.0)
+            elevation = getattr(value, "z", value)
+        def to_world(segment):
+            def evaluate(t):
+                point, tangent, _ = segment.evaluate(t)
+                world = ocs.to_wcs(Vec3(point.x, point.y, elevation))
+                direction = ocs.to_wcs(Vec3(tangent.x, tangent.y, 0.0))
+                world_tangent = normalize(Vec2(direction.x, direction.y))
+                return Vec2(world.x, world.y), world_tangent, perpendicular(world_tangent)
+            return _Segment(segment.handle, segment.segment_index, segment.length, evaluate, segment.smoothable)
+        result = [to_world(segment) for segment in result]
     return result
 
 

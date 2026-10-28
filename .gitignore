@@ -16,3 +16,6 @@ dist/
 .venv/
 venv/
 env/
+
+# Machine-specific Windows shortcuts
+*.lnk

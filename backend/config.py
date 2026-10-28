@@ -33,6 +33,7 @@ DEFAULT_PARAMS = {
 
 # Selection / geometry tolerances
 POINT_TOLERANCE = 1e-4
+CURVE_TOLERANCE = 0.01  # maximum curve flattening error, in drawing units
 CLICK_TOLERANCE_PIXELS = 8
 MIN_ENTITY_LENGTH = 1e-6
 
@@ -41,3 +42,8 @@ GENERATED_LAYER = "GENERATED_CIRCLES"
 RAY_LAYER = "GENERATED_RAYS"
 AIR_DUCT_LAYER = "GENERATED_AIR_DUCTS"
 SELECTED_HIGHLIGHT_COLOR = "#00BFFF"
+
+# Automatically extend nearby open outline fragments and add explicit closure edges.
+AUTO_JOIN_GAP = 5.0
+AUTO_JOIN_RATIO = 0.02
+REPAIRED_OUTLINE_LAYER = "AUTO_CLOSED_OUTLINE"

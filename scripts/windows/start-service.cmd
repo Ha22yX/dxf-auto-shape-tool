@@ -14,6 +14,10 @@ echo Stopping old service instances...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%stop_old_service.ps1"
 
 set "PYTHON_CMD="
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
+    set "PYTHON_CMD=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+    goto check_deps
+)
 if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"
 if defined PYTHON_CMD goto check_deps
 

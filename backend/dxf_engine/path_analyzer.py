@@ -1,6 +1,7 @@
 """Analyze connected edge chains in DXF modelspace."""
 from typing import List, Dict, Tuple, Optional
 from collections import defaultdict, deque
+import math
 from ezdxf.math import Vec2
 
 from backend.config import POINT_TOLERANCE
@@ -43,22 +44,14 @@ def get_chain_info(doc, chain: List[str]) -> dict:
         if entity:
             is_closed = _entity_is_closed(entity)
     elif len(chain) >= 2:
-        # Build adjacency restricted to chain
-        graph, _ = _build_adjacency(doc)
-        handles_in_chain = set(chain)
-        all_two_neighbors = all(
-            len([n for n in graph.get(h, []) if n in handles_in_chain]) == 2
-            for h in chain
+        # Check the oriented traversal, including every join. Handle-neighbor
+        # counts cannot distinguish two arcs sharing BOTH endpoints, and raw
+        # DXF start/end directions need not match traversal direction.
+        segments = geom._build_segments(doc, chain)
+        is_closed = bool(segments) and all(
+            _points_equal(first.evaluate(1.0)[0], second.evaluate(0.0)[0])
+            for first, second in zip(segments, segments[1:] + segments[:1])
         )
-
-        # Also check geometric closure: first start == last end
-        ep_first = geom.entity_endpoints(doc.entitydb[chain[0]])
-        ep_last = geom.entity_endpoints(doc.entitydb[chain[-1]])
-        geometric_closed = False
-        if ep_first and ep_last:
-            geometric_closed = _points_equal(ep_first[0], ep_last[1])
-
-        is_closed = all_two_neighbors or geometric_closed
 
     for handle in chain:
         entity = doc.entitydb.get(handle)
@@ -77,22 +70,34 @@ def _build_adjacency(doc) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     Build endpoint adjacency graph.
     Returns (handle -> neighbors, handle -> endpoint_keys).
     """
-    endpoint_index: Dict[str, List[str]] = defaultdict(list)  # rounded_point -> handles
+    endpoint_index: Dict[str, List[str]] = defaultdict(list)
     handle_endpoints: Dict[str, List[str]] = {}
-
+    # Search neighboring spatial cells and compare actual distances. Rounding
+    # alone separates endpoints on opposite sides of a cell boundary.
+    spatial = defaultdict(list)
+    node_count = 0
     for entity in doc.modelspace():
-        dtype = entity.dxftype()
-        if dtype not in ("LINE", "ARC", "LWPOLYLINE", "POLYLINE", "ELLIPSE", "SPLINE", "CIRCLE"):
+        if entity.dxftype() not in ("LINE", "ARC", "LWPOLYLINE", "POLYLINE", "ELLIPSE", "SPLINE", "CIRCLE"):
             continue
-
         endpoints = geom.entity_endpoints(entity)
         if not endpoints:
             continue
-
         handle = entity.dxf.handle
         keys = []
-        for pt in endpoints:
-            key = _point_key(pt)
+        for point in endpoints:
+            cell = (math.floor(point.x / POINT_TOLERANCE), math.floor(point.y / POINT_TOLERANCE))
+            matches = [
+                ((point - other).magnitude, key)
+                for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                for other, key in spatial.get((cell[0] + dx, cell[1] + dy), [])
+                if (point - other).magnitude <= POINT_TOLERANCE
+            ]
+            if matches:
+                key = min(matches)[1]
+            else:
+                key = f"node_{node_count}"
+                node_count += 1
+            spatial[cell].append((point, key))
             keys.append(key)
             endpoint_index[key].append(handle)
         handle_endpoints[handle] = keys

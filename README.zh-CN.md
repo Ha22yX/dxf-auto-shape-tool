@@ -50,6 +50,10 @@
 3. 调整孔的大小、间距、槽的设置，以及不需要生成槽的区域，并查看预览。
 4. 导出新的 DXF 图纸，在 CAD/CAM 软件中检查后再用于加工。
 
+选中的轮廓未闭合时，程序会尝试连接附近断开的边段，并用直线补齐首尾。黄色虚线表示自动补线，保存时会作为真实线段一并导出到 `AUTO_CLOSED_OUTLINE` 图层。请在预览中检查补线是否符合原图意图。
+
+程序使用补全后的轮廓判断内外，并检查完整圆孔和长槽是否越界；未能形成有效区域的几何会显示提示。
+
 使用者可以直接修改参数，不用每次重新画整个布局。界面中的辅助线方便查看孔和槽的排列，导出的 DXF 则保留加工需要的图形。
 
 ![程序中的冲浪板轮廓预览和参数面板](docs/assets/Pic.png)
@@ -59,7 +63,7 @@
 | 部分 | 工具 | 用途 |
 | --- | --- | --- |
 | 后端 | Python、FastAPI | 在本地运行，处理文件上传和图纸生成。 |
-| 图形处理 | ezdxf 和自己编写的几何处理代码 | 读取轮廓，生成吸孔、胶囊形长槽和导风槽。 |
+| 图形处理 | ezdxf、Shapely 和自己编写的几何处理代码 | 读取轮廓，生成吸孔、胶囊形长槽和导风槽。 |
 | 界面 | HTML、CSS、JavaScript、SVG | 显示轮廓、选中的边、参数和预览。 |
 | Windows 启动与打包 | 启动脚本、PyInstaller | 提供本地启动和打包方式。 |
 
@@ -76,7 +80,17 @@ python main.py
 
 程序会启动本地服务，并自动在浏览器中打开界面。如果浏览器没有自动打开，可以访问默认地址 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
-Windows 用户也可以通过 [`scripts/windows/start-manager-hidden.vbs`](scripts/windows/start-manager-hidden.vbs) 启动本地服务管理器。目前的软件界面是中文。
+Windows 用户推荐使用独立环境和一键启动入口：
+
+```bat
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+start-local.cmd
+```
+
+启动器会确认服务就绪后自动打开网页。使用时保持服务管理器窗口开启，关闭管理器会停止服务。重复启动会打开已有服务。启动问题会显示错误提示，日志保存在 `temp/launcher.log` 或 `temp/startup-error.log`。原来的 [`scripts/windows/start-manager-hidden.vbs`](scripts/windows/start-manager-hidden.vbs) 入口也仍可使用。
+
+页面右上角可以切换中文和 English，程序会记住语言选择；切换时保留当前图纸和参数。
 
 ## 使用时需要注意的地方
 

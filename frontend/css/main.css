@@ -333,3 +333,23 @@ body {
     color: #666;
     font-size: 14px;
 }
+
+/* Language control and room for longer English labels. */
+.header-actions { align-items: center; }
+.language-control { display: flex; align-items: center; gap: 8px; color: #aaa; font-size: 12px; }
+.language-control select { padding: 8px 10px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font: inherit; cursor: pointer; }
+.language-control select:focus-visible { outline: 2px solid #00BFFF; outline-offset: 2px; }
+.panel-section { flex-shrink: 0; }
+html[lang="en"] .panel-section { width: 340px; }
+.slider-group .slider-header { gap: 10px; }
+.slider-group .slider-header label { min-width: 0; line-height: 1.4; }
+.slider-header .input-with-unit, .slider-header > input { flex-shrink: 0; }
+.toggle-group { gap: 12px; }
+.status-bar { flex-wrap: wrap; row-gap: 4px; }
+@media (max-width: 640px) {
+    .app-header { flex-wrap: wrap; gap: 12px; }
+    html[lang="en"] .panel-section { width: 300px; }
+}
+
+.geometry-notice { padding: 10px 16px; background: #3c2f13; border-bottom: 1px solid #7b6227; color: #f5d58a; font-size: 13px; line-height: 1.5; }
+.geometry-notice[data-tone="info"] { background: #102c38; border-color: #245267; color: #a5d9f0; }
