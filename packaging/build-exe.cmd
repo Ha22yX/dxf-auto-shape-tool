@@ -6,6 +6,8 @@ for %%I in ("%SCRIPT_DIR%..") do set "PROJECT_ROOT=%%~fI"
 cd /d "%PROJECT_ROOT%"
 
 set "PYTHON_CMD="
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" set "PYTHON_CMD=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+if defined PYTHON_CMD goto build
 if exist "C:\Python314\python.exe" set "PYTHON_CMD=C:\Python314\python.exe"
 if defined PYTHON_CMD goto build
 
@@ -24,12 +26,8 @@ exit /b 1
 
 :build
 echo Using Python: %PYTHON_CMD%
-"%PYTHON_CMD%" -m pip show pyinstaller >nul 2>nul
-if errorlevel 1 (
-    echo Installing PyInstaller...
-    "%PYTHON_CMD%" -m pip install pyinstaller
-    if errorlevel 1 goto fail
-)
+"%PYTHON_CMD%" -m pip install -r "packaging\requirements-build.txt"
+if errorlevel 1 goto fail
 
 echo Building executable...
 "%PYTHON_CMD%" -m PyInstaller --noconfirm --clean "packaging\dxf-auto-shape-tool.spec"
@@ -37,12 +35,12 @@ if errorlevel 1 goto fail
 
 echo.
 echo Build complete:
-echo %PROJECT_ROOT%\dist\DXF Auto Shape Tool EXE was generated.
-pause
+echo %PROJECT_ROOT%\dist\dxf-auto-shape-tool-v*.exe
+if not defined CI pause
 exit /b 0
 
 :fail
 echo.
 echo Build failed.
-pause
+if not defined CI pause
 exit /b 1

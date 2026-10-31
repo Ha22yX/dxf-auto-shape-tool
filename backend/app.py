@@ -10,6 +10,7 @@ import io
 from urllib.parse import quote
 
 from backend.config import BASE_DIR, TEMP_DIR, GENERATED_LAYER
+from backend.version import APP_VERSION
 from backend.state import (
     SessionState,
     CircleParams,
@@ -21,7 +22,7 @@ from backend.state import (
 )
 from backend.dxf_engine import loader, svg_exporter, entity_mapper, path_analyzer, circle_generator, geometry_utils, contour_repair
 
-app = FastAPI(title="DXF 自动图形工具")
+app = FastAPI(version=APP_VERSION, title="DXF 自动图形工具")
 SESSION_TTL_SECONDS = 60 * 60
 TEMP_FILE_TTL_SECONDS = 24 * 60 * 60
 

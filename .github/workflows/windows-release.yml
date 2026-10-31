@@ -1,0 +1,87 @@
+name: Windows executable release
+
+on:
+  push:
+    branches: [master]
+    paths: [backend/version.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            packaging/requirements-build.txt
+      - name: Read release version
+        id: version
+        run: |
+          $version = python -c "from backend.version import APP_VERSION; print(APP_VERSION)"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+          "exe=dist/dxf-auto-shape-tool-v$version.exe" >> $env:GITHUB_OUTPUT
+      - name: Install build dependencies
+        run: |
+          python -m pip install -r packaging/requirements-build.txt pytest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip check
+      - name: Run geometry regressions
+        run: |
+          python -m pytest tests -q `
+            --deselect=tests/test_dxf_engine.py::test_air_duct_contours_cover_kept_circles_after_pruning `
+            --deselect=tests/test_dxf_engine.py::test_air_duct_inlet_edges_align_to_curve_endpoints_without_diagonal_bridges `
+            --deselect=tests/test_dxf_engine.py::test_dense_air_duct_region_outputs_single_outline_without_interior_inlet
+      - name: Build single-file executable
+        run: python -m PyInstaller --noconfirm --clean packaging/dxf-auto-shape-tool.spec
+      - name: Verify packaged GUI, upload, WebSocket, repair, and DXF export
+        run: python packaging/smoke_exe.py '${{ steps.version.outputs.exe }}' --version '${{ steps.version.outputs.version }}'
+      - name: Write SHA256 checksum
+        run: |
+          $exe = '${{ steps.version.outputs.exe }}'
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  $([IO.Path]::GetFileName($exe))" | Set-Content -Encoding utf8 dist/SHA256SUMS.txt
+      - name: Keep verified build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe-v${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.version.outputs.exe }}
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish verified GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          gh release view $tag --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists; bump backend/version.py before publishing another binary."
+          }
+          gh release create $tag '${{ steps.version.outputs.exe }}' 'dist/SHA256SUMS.txt' `
+            --repo '${{ github.repository }}' --target '${{ github.sha }}' `
+            --title "DXF 自动图形工具 $tag" --notes-file "packaging/release-notes-$tag.md" --latest
+      - name: Keep build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-diagnostics
+          path: |
+            build/*/warn-*.txt
+            build/*/xref-*.html

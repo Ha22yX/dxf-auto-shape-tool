@@ -69,6 +69,10 @@ The interface lets the user change settings without redrawing the whole layout. 
 
 ## Run it locally
 
+Windows users can download the standalone EXE from [GitHub Releases](https://github.com/Ha22yX/dxf-auto-shape-tool/releases/latest). No Python installation is needed. Keep the service manager open while using the app; its title shows the version. EXE logs are stored in `%LOCALAPPDATA%\DXFAutoShapeTool\temp`.
+
+To build the EXE from source on Windows, run `packaging\build-exe.cmd` after creating the virtual environment below. The result is `dist\dxf-auto-shape-tool-v1.0.4.exe`. Updating `backend/version.py` on `master` triggers the Windows build and release workflow, which verifies the packaged application before publishing.
+
 Install Python and Git, then run:
 
 ```bash

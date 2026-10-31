@@ -69,6 +69,10 @@
 
 ## 在本地运行
 
+Windows 用户可以从 [GitHub Releases](https://github.com/Ha22yX/dxf-auto-shape-tool/releases/latest) 下载独立 EXE，无需安装 Python。使用时保持服务管理器开启，窗口标题会显示版本。EXE 日志保存在 `%LOCALAPPDATA%\DXFAutoShapeTool\temp`。
+
+如果要在 Windows 上从源码打包，先按下面的步骤建立虚拟环境，再运行 `packaging\build-exe.cmd`，生成文件为 `dist\dxf-auto-shape-tool-v1.0.4.exe`。在 `master` 更新 `backend/version.py` 会触发 Windows 自动构建和发布，打包程序通过运行检查后才会上传到 Release。
+
 安装 Python 和 Git 后，运行以下命令：
 
 ```bash

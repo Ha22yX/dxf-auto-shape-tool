@@ -1,9 +1,16 @@
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TEMP_DIR = BASE_DIR / "temp"
-TEMP_DIR.mkdir(exist_ok=True)
+# A one-file EXE extracts resources to a temporary directory. Keep runtime
+# files outside that directory so logs survive closing the application.
+RUNTIME_DIR = (
+    Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "DXFAutoShapeTool"
+    if getattr(sys, "frozen", False) else BASE_DIR
+)
+TEMP_DIR = RUNTIME_DIR / "temp"
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))

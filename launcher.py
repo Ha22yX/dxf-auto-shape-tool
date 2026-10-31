@@ -26,6 +26,8 @@ import urllib.request
 from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
+from backend.version import APP_VERSION
+
 
 APP_TITLE = "DXF自动图形工具"
 DEFAULT_PORT = int(os.environ.get("PORT", "8000"))
@@ -44,6 +46,12 @@ def _app_dir() -> Path:
 
 def _app_icon_path() -> Path:
     return _app_dir() / "frontend" / "assets" / "app-icon.ico"
+
+
+def _runtime_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "DXFAutoShapeTool"
+    return _app_dir()
 
 
 def _set_window_icon(window: tk.Tk | tk.Toplevel) -> None:
@@ -74,6 +82,17 @@ def _service_child(host: str, port: int) -> None:
     sys.path.insert(0, str(_app_dir()))
     os.environ["HOST"] = host
     os.environ["PORT"] = str(port)
+
+    # Windowed PyInstaller apps have no standard streams. Uvicorn's logging
+    # formatters require a stream with isatty(), even when no console is shown.
+    if sys.stdout is None or sys.stderr is None:
+        log_dir = _runtime_dir() / "temp"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stream = (log_dir / "service.log").open("a", encoding="utf-8", buffering=1)
+        if sys.stdout is None:
+            sys.stdout = stream
+        if sys.stderr is None:
+            sys.stderr = stream
 
     import uvicorn
 
@@ -255,8 +274,8 @@ class LauncherApp:
         self.port = port
         self.startup_pending = False
         self.startup_deadline = 0.0
-        self.log_path = _app_dir() / "temp" / "launcher.log"
-        self.log_path.parent.mkdir(exist_ok=True)
+        self.log_path = _runtime_dir() / "temp" / "launcher.log"
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.process: subprocess.Popen[str] | None = None
         self.log_lines: collections.deque[str] = collections.deque(maxlen=LOG_BUFFER_LINES)
         self.log_queue: queue.Queue[str] = queue.Queue()
@@ -264,7 +283,7 @@ class LauncherApp:
         self.log_text: scrolledtext.ScrolledText | None = None
         self.lan_ip = _lan_ip()
 
-        self.root.title(APP_TITLE)
+        self.root.title(f"{APP_TITLE} v{APP_VERSION}")
         _set_window_icon(self.root)
         self.root.geometry("560x340")
         self.root.minsize(520, 320)
