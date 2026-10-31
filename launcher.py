@@ -93,6 +93,11 @@ def _service_child(host: str, port: int) -> None:
             sys.stdout = stream
         if sys.stderr is None:
             sys.stderr = stream
+    # Redirected standard handles can exist in a windowed EXE but default to
+    # the Windows ANSI encoding. Chinese upload/status logs must stay writable.
+    for output in (sys.stdout, sys.stderr):
+        if hasattr(output, "reconfigure"):
+            output.reconfigure(encoding="utf-8", errors="replace")
 
     import uvicorn
 

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -16,6 +17,8 @@ import uuid
 import ezdxf
 from shapely.geometry import Point, Polygon
 import websockets
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def request(base, path, data=None, headers=None):
@@ -135,9 +138,9 @@ def main():
                 ellipse = doc.modelspace().add_ellipse((0, 0), major_axis=(0, 400), ratio=0.3)
                 curved = check_case(base, doc, ellipse.dxf.handle, {
                     "circle_radius": 2, "ray_offset": 20, "circle_spacing": 10,
-                    "circles_per_ray": 3, "ray_count": 160, "top_gap_distance": 0,
+                    "circles_per_ray": 3, "ray_count": 120, "top_gap_distance": 0,
                     "air_duct_inlet_distance": 20, "capsule_axis_gap_above_distance": 150,
-                    "capsule_axis_gap_below_distance": 100,
+                    "capsule_axis_gap_below_distance": 150,
                 }, 0, curved=True)
                 doc = ezdxf.new()
                 edge = doc.modelspace().add_lwpolyline([(0, 0), (200, 0), (200, 100), (0, 100)])
@@ -152,8 +155,12 @@ def main():
                 subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
                 process.wait(timeout=15)
+                diagnostic_dir = Path(__file__).resolve().parents[1] / "build" / "smoke-logs"
+                diagnostic_dir.mkdir(parents=True, exist_ok=True)
                 for path in runtime.rglob("*.log"):
-                    print(f"--- {path.name} ---\n{path.read_text(encoding='utf-8', errors='replace')}")
+                    content = path.read_text(encoding="utf-8", errors="replace")
+                    (diagnostic_dir / path.name).write_text(content, encoding="utf-8")
+                    print(f"--- {path.name} ---\n{content}")
 
 
 if __name__ == "__main__":

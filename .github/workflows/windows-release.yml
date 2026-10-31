@@ -17,6 +17,9 @@ jobs:
   build-and-publish:
     runs-on: windows-latest
     timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
     defaults:
       run:
         shell: pwsh
@@ -85,3 +88,4 @@ jobs:
           path: |
             build/*/warn-*.txt
             build/*/xref-*.html
+            build/smoke-logs/*.log
